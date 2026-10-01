@@ -1,7 +1,6 @@
 from datetime import datetime, timedelta
-
+from app.services.memory_relevance import get_relevant_memories
 from sqlalchemy.orm import Session
-from app.services.memory_service import get_memories
 from app.services.context_engine import (
     build_academic_context,
 )
@@ -32,12 +31,13 @@ class ProfPilotAI:
 
         course = context["selected_course"]
 
-        memories = get_memories(
+        memories = get_relevant_memories(
             db=db,
+            query=message,
             lecturer_id=lecturer_id,
             course_id=course_id,
-            limit=10,
-            )
+            limit=5,
+        )
         memory_lines = []
 
         for memory in memories:
