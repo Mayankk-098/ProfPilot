@@ -1,4 +1,4 @@
-# split	group	source	lang	intent	marked_text   (entities written as [[text|LABEL]])
+# split	group	source	lang	intent	marked_text
 train	qcc1	handwritten	en	query_course_completion	when will I finish [[DBMS|COURSE]]
 train	qcc1	handwritten	en	query_course_completion	by when will the [[DBMS|COURSE]] syllabus be complete
 dev	qcc2	handwritten	en	query_course_completion	will I finish [[AI|COURSE]] before [[7 December|DATE]]
@@ -7,16 +7,20 @@ test	qcc4	handwritten	en	query_course_completion	how long until the [[AI|COURSE]
 train	wif1	handwritten	en	what_if_schedule_change	what if I cancel the next [[DBMS|COURSE]] class
 train	wif2	handwritten	en	what_if_schedule_change	what happens to my pace if I skip [[tomorrow|DATE]]'s class
 test	wif3	handwritten	en	what_if_schedule_change	what if I take an extra class on [[Saturday|DATE]] for [[CSE-B|BATCH]]
+dev	wif4	handwritten	en	what_if_schedule_change	what happens to my syllabus timeline if I miss two classes
 train	nc1	handwritten	en	query_next_class	what's my next class
 train	nc1	handwritten	en	query_next_class	when is my next lecture
 dev	nc2	handwritten	en	query_next_class	where is my next class
 train	nc3	handwritten	hinglish	query_next_class	agli class kab hai
+test	nc4	handwritten	en	query_next_class	which class do I have next
 train	ll1	handwritten	en	query_last_lecture	what did I teach in the last [[DBMS|COURSE]] lecture
 dev	ll2	handwritten	en	query_last_lecture	what did I cover in [[AI|COURSE]] [[yesterday|DATE]]
 train	ll3	handwritten	hinglish	query_last_lecture	last lecture mein kya padhaya tha
+test	ll4	handwritten	en	query_last_lecture	what was covered in my previous [[DBMS|COURSE]] class
 train	cs1	handwritten	en	query_course_status	how am I doing in [[DBMS|COURSE]]
 test	cs2	handwritten	en	query_course_status	show my [[AI|COURSE]] syllabus progress
 train	cs3	handwritten	en	query_course_status	which courses are behind schedule
+dev	cs4	handwritten	en	query_course_status	give me the [[DBMS|COURSE]] course status
 train	al1	handwritten	en	query_attendance_low	which students are below [[75%|THRESHOLD]] attendance
 train	al2	handwritten	en	query_attendance_low	who has attendance shortage in [[CSE-B|BATCH]]
 dev	al3	handwritten	en	query_attendance_low	list defaulters for [[DBMS|COURSE]]
@@ -27,6 +31,7 @@ test	me3	handwritten	en	query_memory_events	have I cancelled any classes [[this 
 train	ed1	handwritten	en	explain_delay	why am I behind in [[DBMS|COURSE]]
 dev	ed2	handwritten	en	explain_delay	what caused the delay in [[DBMS|COURSE]]
 train	ed3	handwritten	en	explain_delay	why is my syllabus slipping
+test	ed4	handwritten	en	explain_delay	what is making me fall behind in [[AI|COURSE]]
 train	cc1	handwritten	en	cancel_class	cancel [[tomorrow|DATE]]'s [[DBMS|COURSE]] class
 train	cc2	handwritten	en	cancel_class	cancel the [[10:00 AM|TIME]] class for [[CSE-B|BATCH]]
 dev	cc3	handwritten	en	cancel_class	I can't make it on [[Friday|DATE]], cancel the class
@@ -48,8 +53,133 @@ train	oos1	handwritten	en	out_of_scope	what's the weather like
 train	oos2	handwritten	en	out_of_scope	tell me a joke
 dev	oos3	handwritten	en	out_of_scope	book me a flight to Delhi
 test	oos4	handwritten	en	out_of_scope	who won the cricket match yesterday
-test	ed4	handwritten	en	explain_delay	what is making me fall behind in [[AI|COURSE]]
-dev	cs4	handwritten	en	query_course_status	give me the [[DBMS|COURSE]] course status
-test	ll4	handwritten	en	query_last_lecture	what was covered in my previous [[DBMS|COURSE]] class
-test	nc4	handwritten	en	query_next_class	which class do I have next
-dev	wif4	handwritten	en	what_if_schedule_change	what happens to my syllabus timeline if I miss two classes
+train	qcc5	synthetic	en	query_course_completion	when should I expect to finish [[DBMS|COURSE]]
+train	qcc6	synthetic	en	query_course_completion	when will the [[AI|COURSE]] syllabus be completed
+train	qcc7	synthetic	en	query_course_completion	how much longer until I complete [[DBMS|COURSE]]
+train	qcc8	synthetic	en	query_course_completion	what date should I finish [[AI|COURSE]]
+train	qcc9	synthetic	en	query_course_completion	will I complete [[DBMS|COURSE]] on time
+train	qcc10	synthetic	en	query_course_completion	how soon can I finish my [[AI|COURSE]] syllabus
+train	qcc11	synthetic	en	query_course_completion	when is [[DBMS|COURSE]] expected to finish
+train	qcc12	synthetic	en	query_course_completion	am I on track to complete [[AI|COURSE]]
+train	qcc13	synthetic	hinglish	query_course_completion	[[DBMS|COURSE]] kab tak complete ho jayega
+train	qcc14	synthetic	hinglish	query_course_completion	[[AI|COURSE]] ka syllabus kab khatam hoga
+train	wif5	synthetic	en	what_if_schedule_change	what if I skip the next [[DBMS|COURSE]] lecture
+train	wif6	synthetic	en	what_if_schedule_change	what happens if tomorrow's class is cancelled
+train	wif7	synthetic	en	what_if_schedule_change	what if I add one more [[AI|COURSE]] lecture this week
+train	wif8	synthetic	en	what_if_schedule_change	how does missing one class affect my [[DBMS|COURSE]] completion
+train	wif9	synthetic	en	what_if_schedule_change	what if I postpone my next lecture
+train	wif10	synthetic	en	what_if_schedule_change	what happens to my pace if I miss [[Friday|DATE]]'s class
+train	wif11	synthetic	en	what_if_schedule_change	how would two cancelled classes affect my syllabus
+train	wif12	synthetic	en	what_if_schedule_change	what if I teach an extra class on [[Saturday|DATE]]
+train	wif13	synthetic	hinglish	what_if_schedule_change	agar kal class miss karun to syllabus par kya effect hoga
+train	wif14	synthetic	hinglish	what_if_schedule_change	agar ek extra [[DBMS|COURSE]] class le lu to kya hoga
+train	nc5	synthetic	en	query_next_class	what lecture do I have after this
+train	nc6	synthetic	en	query_next_class	which class is coming up
+train	nc7	synthetic	en	query_next_class	when do I teach next
+train	nc8	synthetic	en	query_next_class	what is my upcoming class
+train	nc9	synthetic	en	query_next_class	what class comes next in my timetable
+train	nc10	synthetic	en	query_next_class	where do I have my next lecture
+train	nc11	synthetic	en	query_next_class	tell me my upcoming lecture
+train	nc12	synthetic	en	query_next_class	which lecture is next on my schedule
+train	nc13	synthetic	hinglish	query_next_class	meri next class kaunsi hai
+train	nc14	synthetic	hinglish	query_next_class	meri agli lecture kab hai
+train	ll5	synthetic	en	query_last_lecture	what did I teach in my previous lecture
+train	ll6	synthetic	en	query_last_lecture	what topic did I cover in my last class
+train	ll7	synthetic	en	query_last_lecture	what was my previous [[DBMS|COURSE]] lecture about
+train	ll8	synthetic	en	query_last_lecture	what did I teach in [[AI|COURSE]] last time
+train	ll9	synthetic	en	query_last_lecture	what was covered in my previous class
+train	ll10	synthetic	en	query_last_lecture	which topic did I teach most recently
+train	ll11	synthetic	en	query_last_lecture	what did I cover in the last lecture
+train	ll12	synthetic	en	query_last_lecture	tell me about my latest [[DBMS|COURSE]] class
+train	ll13	synthetic	hinglish	query_last_lecture	last class mein kya padhaya
+train	ll14	synthetic	hinglish	query_last_lecture	pichli [[DBMS|COURSE]] class mein kya hua tha
+train	cs5	synthetic	en	query_course_status	what is the current status of [[DBMS|COURSE]]
+train	cs6	synthetic	en	query_course_status	how is [[AI|COURSE]] progressing
+train	cs7	synthetic	en	query_course_status	show me the progress of [[DBMS|COURSE]]
+train	cs8	synthetic	en	query_course_status	am I on schedule with [[AI|COURSE]]
+train	cs9	synthetic	en	query_course_status	is [[DBMS|COURSE]] ahead or behind
+train	cs10	synthetic	en	query_course_status	how far through the [[AI|COURSE]] syllabus am I
+train	cs11	synthetic	en	query_course_status	what is happening with my [[DBMS|COURSE]]
+train	cs12	synthetic	en	query_course_status	give me an update on [[AI|COURSE]]
+train	cs13	synthetic	hinglish	query_course_status	[[DBMS|COURSE]] ki progress kya hai
+train	cs14	synthetic	hinglish	query_course_status	[[AI|COURSE]] time par chal raha hai kya
+train	al5	synthetic	en	query_attendance_low	show students with attendance under [[75%|THRESHOLD]]
+train	al6	synthetic	en	query_attendance_low	which [[DBMS|COURSE]] students are below the attendance threshold
+train	al7	synthetic	en	query_attendance_low	who are the attendance defaulters
+train	al8	synthetic	en	query_attendance_low	list students with attendance below [[75%|THRESHOLD]]
+train	al9	synthetic	en	query_attendance_low	which students need to improve their attendance
+train	al10	synthetic	en	query_attendance_low	who has low attendance in [[CSE-A|BATCH]]
+train	al11	synthetic	en	query_attendance_low	which students are short of the minimum attendance
+train	al12	synthetic	en	query_attendance_low	show me the [[DBMS|COURSE]] attendance shortage
+train	al13	synthetic	hinglish	query_attendance_low	[[75%|THRESHOLD]] se kam attendance wale students kaun hain
+train	al14	synthetic	hinglish	query_attendance_low	[[CSE-B|BATCH]] mein kiski attendance kam hai
+train	me4	synthetic	en	query_memory_events	what academic events do you remember for [[DBMS|COURSE]]
+train	me5	synthetic	en	query_memory_events	show me my recent [[DBMS|COURSE]] memories
+train	me6	synthetic	en	query_memory_events	what happened with [[AI|COURSE]] recently
+train	me7	synthetic	en	query_memory_events	what changes happened in my classes recently
+train	me8	synthetic	en	query_memory_events	show my latest academic events
+train	me9	synthetic	en	query_memory_events	what did I recently record for [[DBMS|COURSE]]
+train	me10	synthetic	en	query_memory_events	have there been any recent changes to my [[AI|COURSE]]
+train	me11	synthetic	en	query_memory_events	what does ProfPilot remember about [[DBMS|COURSE]]
+train	me12	synthetic	hinglish	query_memory_events	[[DBMS|COURSE]] mein recent mein kya hua
+train	me13	synthetic	hinglish	query_memory_events	ProfPilot ko meri recent classes mein kya yaad hai
+train	ed5	synthetic	en	explain_delay	why is [[DBMS|COURSE]] falling behind
+train	ed6	synthetic	en	explain_delay	what caused my [[AI|COURSE]] to fall behind
+train	ed7	synthetic	en	explain_delay	why am I behind schedule
+train	ed8	synthetic	en	explain_delay	what is causing the syllabus delay
+train	ed9	synthetic	en	explain_delay	why is my course progressing slowly
+train	ed10	synthetic	en	explain_delay	why hasn't my [[DBMS|COURSE]] kept up with the plan
+train	ed11	synthetic	en	explain_delay	what caused the teaching delay
+train	ed12	synthetic	en	explain_delay	why did my syllabus progress slow down
+train	ed13	synthetic	hinglish	explain_delay	[[DBMS|COURSE]] mein delay kyun ho raha hai
+train	ed14	synthetic	hinglish	explain_delay	mera syllabus piche kyun chal raha hai
+train	cc6	synthetic	en	cancel_class	please cancel my [[DBMS|COURSE]] class tomorrow
+train	cc7	synthetic	en	cancel_class	I need to cancel the [[AI|COURSE]] lecture on [[Friday|DATE]]
+train	cc8	synthetic	en	cancel_class	call off my [[10:00 AM|TIME]] lecture
+train	cc9	synthetic	en	cancel_class	cancel the class for [[CSE-A|BATCH]]
+train	cc10	synthetic	en	cancel_class	I won't be able to take [[DBMS|COURSE]] tomorrow
+train	cc11	synthetic	en	cancel_class	remove tomorrow's lecture from my schedule
+train	cc12	synthetic	en	cancel_class	I need to call off [[Monday|DATE]]'s class
+train	cc13	synthetic	en	cancel_class	please drop the [[AI|COURSE]] lecture
+train	cc14	synthetic	hinglish	cancel_class	[[kal|DATE]] ki class cancel kar do
+train	cc15	synthetic	hinglish	cancel_class	[[DBMS|COURSE]] ki class kal mat rakho
+train	rc5	synthetic	en	reschedule_class	move the [[DBMS|COURSE]] lecture to [[2:00 PM|NEW_TIME]]
+train	rc6	synthetic	en	reschedule_class	shift [[Monday|DATE]]'s class to [[Tuesday|NEW_DATE]]
+train	rc7	synthetic	en	reschedule_class	move my [[10:00 AM|TIME]] class to [[3:00 PM|NEW_TIME]]
+train	rc8	synthetic	en	reschedule_class	change the [[AI|COURSE]] class to [[Friday|NEW_DATE]]
+train	rc9	synthetic	en	reschedule_class	reschedule the class for [[CSE-A|BATCH]] to [[4:00 PM|NEW_TIME]]
+train	rc10	synthetic	en	reschedule_class	can you move tomorrow's [[DBMS|COURSE]] lecture
+train	rc11	synthetic	en	reschedule_class	change the lecture time from [[10:00 AM|TIME]] to [[1:00 PM|NEW_TIME]]
+train	rc12	synthetic	en	reschedule_class	shift [[Wednesday|DATE]]'s class to [[Thursday|NEW_DATE]]
+train	rc13	synthetic	hinglish	reschedule_class	[[DBMS|COURSE]] ki class [[2:00 PM|NEW_TIME]] par shift kar do
+train	rc14	synthetic	hinglish	reschedule_class	[[Monday|DATE]] wali class ko [[Wednesday|NEW_DATE]] kar do
+train	nb5	synthetic	en	notify_batch	notify [[CSE-B|BATCH]] about tomorrow's class
+train	nb6	synthetic	en	notify_batch	send a message to [[CSE-A|BATCH]] about the cancelled lecture
+train	nb7	synthetic	en	notify_batch	tell the [[DBMS|COURSE]] students about the schedule change
+train	nb8	synthetic	en	notify_batch	inform [[CSE-B|BATCH]] that the room has changed to [[Block A room 105|ROOM]]
+train	nb9	synthetic	en	notify_batch	send [[CSE-A|BATCH]] a reminder about the quiz
+train	nb10	synthetic	en	notify_batch	notify the students about [[Friday|DATE]]'s class
+train	nb11	synthetic	en	notify_batch	let [[CSE-B|BATCH]] know that today's lecture is cancelled
+train	nb12	synthetic	en	notify_batch	send the [[AI|COURSE]] students an announcement
+train	nb13	synthetic	hinglish	notify_batch	[[CSE-A|BATCH]] ko kal ki class ke baare mein batao
+train	nb14	synthetic	hinglish	notify_batch	[[DBMS|COURSE]] ke students ko message bhej do
+train	lg5	synthetic	en	log_lecture	log today's [[DBMS|COURSE]] lecture on [[Normalization|TOPIC]]
+train	lg6	synthetic	en	log_lecture	I taught [[Indexing|TOPIC]] in [[DBMS|COURSE]] today
+train	lg7	synthetic	en	log_lecture	record [[60 minutes|DURATION]] for the [[AI|COURSE]] lecture
+train	lg8	synthetic	en	log_lecture	I covered [[Neural Networks|TOPIC]] in [[AI|COURSE]]
+train	lg9	synthetic	en	log_lecture	log [[45 minutes|DURATION]] for today's lecture
+train	lg10	synthetic	en	log_lecture	mark [[Normalization|TOPIC]] as covered today
+train	lg11	synthetic	en	log_lecture	record that I taught [[B+ Trees|TOPIC]] in [[DBMS|COURSE]]
+train	lg12	synthetic	en	log_lecture	add a lecture for [[CSE-B|BATCH]] on [[Indexing|TOPIC]]
+train	lg13	synthetic	hinglish	log_lecture	aaj [[DBMS|COURSE]] mein [[Normalization|TOPIC]] padhaya
+train	lg14	synthetic	hinglish	log_lecture	[[45 minutes|DURATION]] ki class [[DBMS|COURSE]] mein log karo
+train	oos5	synthetic	en	out_of_scope	what is the temperature outside
+train	oos6	synthetic	en	out_of_scope	play some music for me
+train	oos7	synthetic	en	out_of_scope	write a birthday message for my friend
+train	oos8	synthetic	en	out_of_scope	what is the capital of France
+train	oos9	synthetic	en	out_of_scope	set an alarm for 7 AM
+train	oos10	synthetic	en	out_of_scope	what is the latest movie release
+train	oos11	synthetic	en	out_of_scope	translate this sentence into French
+train	oos12	synthetic	hinglish	out_of_scope	mujhe ek joke sunao
+train	oos13	synthetic	hinglish	out_of_scope	aaj weather kaisa hai
+train	oos14	synthetic	hinglish	out_of_scope	Delhi jaane ke liye flight book kar do
