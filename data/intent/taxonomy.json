@@ -1,0 +1,96 @@
+{
+  "version": 1,
+  "intents": {
+    "query_course_completion": {
+      "is_action": false,
+      "handler": "ai_service: COURSE FINISH PREDICTION",
+      "description": "When will a course's syllabus be finished at the current pace?"
+    },
+    "what_if_schedule_change": {
+      "is_action": false,
+      "handler": "ai_service: WHAT IF CANCEL (to be generalised)",
+      "description": "Hypothetical: effect of cancelling/skipping/adding a class on pace or completion. Nothing is changed."
+    },
+    "query_next_class": {
+      "is_action": false,
+      "handler": "ai_service: NEXT CLASS",
+      "description": "Time/place of the next class."
+    },
+    "query_last_lecture": {
+      "is_action": false,
+      "handler": "ai_service: WHAT DID I TEACH?",
+      "description": "What was taught in a past lecture."
+    },
+    "query_course_status": {
+      "is_action": false,
+      "handler": "ai_service: COURSE STATUS",
+      "description": "Progress / pace summary for one or all courses."
+    },
+    "query_attendance_low": {
+      "is_action": false,
+      "handler": "ai_service: LOW ATTENDANCE",
+      "description": "Which students are below the attendance threshold."
+    },
+    "query_memory_events": {
+      "is_action": false,
+      "handler": "ai_service: RECENT EVENTS (MEMORY)",
+      "description": "Recall recorded academic events (cancellations, moves, etc.)."
+    },
+    "explain_delay": {
+      "is_action": false,
+      "handler": "ai_service: WHY AM I BEHIND?",
+      "description": "Why is a course behind plan."
+    },
+    "cancel_class": {
+      "is_action": true,
+      "handler": "TODO",
+      "description": "Actually cancel a class. Needs confirmation."
+    },
+    "reschedule_class": {
+      "is_action": true,
+      "handler": "TODO",
+      "description": "Actually move a class to a new date/time. Needs confirmation."
+    },
+    "notify_batch": {
+      "is_action": true,
+      "handler": "TODO",
+      "description": "Send a message to a batch/course's students. Needs confirmation."
+    },
+    "log_lecture": {
+      "is_action": true,
+      "handler": "TODO",
+      "description": "Record what was taught (topic, duration) for a course."
+    },
+    "out_of_scope": {
+      "is_action": false,
+      "handler": "fallback",
+      "description": "Anything that is not an academic-workflow request. Must have NO entities."
+    }
+  },
+  "entity_labels": {
+    "COURSE": "Course name/alias exactly as written: DBMS, AI, database, CSE-302",
+    "BATCH": "Section/batch: CSE-A, CSE-B",
+    "DATE": "Date expression: tomorrow, Friday, 7 December, this month. In reschedule_class this is the ORIGINAL date.",
+    "TIME": "Clock time: 10:00 AM, 3 PM. In reschedule_class this is the ORIGINAL time.",
+    "NEW_DATE": "Target date. ONLY in reschedule_class.",
+    "NEW_TIME": "Target time. ONLY in reschedule_class.",
+    "TOPIC": "Syllabus topic: B+ Trees, BCNF, Normalization",
+    "ROOM": "Room/venue: Block C room 204",
+    "THRESHOLD": "Percentage threshold: 75%",
+    "DURATION": "Length of time including the unit: 45 minutes"
+  },
+  "splits": [
+    "train",
+    "dev",
+    "test"
+  ],
+  "langs": [
+    "en",
+    "hinglish"
+  ],
+  "sources": [
+    "handwritten",
+    "synthetic",
+    "student_contributed"
+  ]
+}

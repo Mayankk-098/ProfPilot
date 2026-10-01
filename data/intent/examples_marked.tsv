@@ -1,0 +1,55 @@
+# split	group	source	lang	intent	marked_text   (entities written as [[text|LABEL]])
+train	qcc1	handwritten	en	query_course_completion	when will I finish [[DBMS|COURSE]]
+train	qcc1	handwritten	en	query_course_completion	by when will the [[DBMS|COURSE]] syllabus be complete
+dev	qcc2	handwritten	en	query_course_completion	will I finish [[AI|COURSE]] before [[7 December|DATE]]
+train	qcc3	handwritten	hinglish	query_course_completion	[[DBMS|COURSE]] syllabus kab tak khatam hoga
+test	qcc4	handwritten	en	query_course_completion	how long until the [[AI|COURSE]] course is done
+train	wif1	handwritten	en	what_if_schedule_change	what if I cancel the next [[DBMS|COURSE]] class
+train	wif2	handwritten	en	what_if_schedule_change	what happens to my pace if I skip [[tomorrow|DATE]]'s class
+test	wif3	handwritten	en	what_if_schedule_change	what if I take an extra class on [[Saturday|DATE]] for [[CSE-B|BATCH]]
+train	nc1	handwritten	en	query_next_class	what's my next class
+train	nc1	handwritten	en	query_next_class	when is my next lecture
+dev	nc2	handwritten	en	query_next_class	where is my next class
+train	nc3	handwritten	hinglish	query_next_class	agli class kab hai
+train	ll1	handwritten	en	query_last_lecture	what did I teach in the last [[DBMS|COURSE]] lecture
+dev	ll2	handwritten	en	query_last_lecture	what did I cover in [[AI|COURSE]] [[yesterday|DATE]]
+train	ll3	handwritten	hinglish	query_last_lecture	last lecture mein kya padhaya tha
+train	cs1	handwritten	en	query_course_status	how am I doing in [[DBMS|COURSE]]
+test	cs2	handwritten	en	query_course_status	show my [[AI|COURSE]] syllabus progress
+train	cs3	handwritten	en	query_course_status	which courses are behind schedule
+train	al1	handwritten	en	query_attendance_low	which students are below [[75%|THRESHOLD]] attendance
+train	al2	handwritten	en	query_attendance_low	who has attendance shortage in [[CSE-B|BATCH]]
+dev	al3	handwritten	en	query_attendance_low	list defaulters for [[DBMS|COURSE]]
+test	al4	handwritten	hinglish	query_attendance_low	kitne students ka attendance [[75%|THRESHOLD]] se kam hai
+train	me1	handwritten	en	query_memory_events	what happened recently in [[DBMS|COURSE]]
+dev	me2	handwritten	en	query_memory_events	show recent events for [[AI|COURSE]]
+test	me3	handwritten	en	query_memory_events	have I cancelled any classes [[this month|DATE]]
+train	ed1	handwritten	en	explain_delay	why am I behind in [[DBMS|COURSE]]
+dev	ed2	handwritten	en	explain_delay	what caused the delay in [[DBMS|COURSE]]
+train	ed3	handwritten	en	explain_delay	why is my syllabus slipping
+train	cc1	handwritten	en	cancel_class	cancel [[tomorrow|DATE]]'s [[DBMS|COURSE]] class
+train	cc2	handwritten	en	cancel_class	cancel the [[10:00 AM|TIME]] class for [[CSE-B|BATCH]]
+dev	cc3	handwritten	en	cancel_class	I can't make it on [[Friday|DATE]], cancel the class
+train	cc4	handwritten	hinglish	cancel_class	[[kal|DATE]] [[DBMS|COURSE]] ki class cancel kar do
+test	cc5	handwritten	en	cancel_class	drop [[today|DATE]]'s [[AI|COURSE]] lecture
+train	rc1	handwritten	en	reschedule_class	move [[Monday|DATE]]'s [[DBMS|COURSE]] class to [[Tuesday|NEW_DATE]] at [[11:00 AM|NEW_TIME]]
+train	rc2	handwritten	en	reschedule_class	reschedule the [[AI|COURSE]] class to [[3 PM|NEW_TIME]]
+dev	rc3	handwritten	en	reschedule_class	shift the [[CSE-A|BATCH]] class from [[12:00 PM|TIME]] to [[2:00 PM|NEW_TIME]]
+test	rc4	handwritten	hinglish	reschedule_class	[[DBMS|COURSE]] ki class [[Monday|DATE]] se [[Wednesday|NEW_DATE]] ko shift kar do
+train	nb1	handwritten	en	notify_batch	tell [[CSE-B|BATCH]] that [[tomorrow|DATE]]'s class is cancelled
+train	nb2	handwritten	en	notify_batch	send a reminder to [[CSE-A|BATCH]] about the [[AI|COURSE]] quiz
+dev	nb3	handwritten	en	notify_batch	notify the [[DBMS|COURSE]] students about the new room [[Block C room 204|ROOM]]
+test	nb4	handwritten	hinglish	notify_batch	[[CSE-B|BATCH]] ko batao ki class [[kal|DATE]] nahi hogi
+train	lg1	handwritten	en	log_lecture	I covered [[B+ Trees|TOPIC]] in [[DBMS|COURSE]] [[today|DATE]]
+dev	lg2	handwritten	en	log_lecture	log [[45 minutes|DURATION]] on [[BCNF|TOPIC]] for [[CSE-B|BATCH]]
+train	lg3	handwritten	en	log_lecture	finished [[Normalization|TOPIC]] [[today|DATE]]
+test	lg4	handwritten	hinglish	log_lecture	[[aaj|DATE]] [[DBMS|COURSE]] mein [[Indexing|TOPIC]] padhaya
+train	oos1	handwritten	en	out_of_scope	what's the weather like
+train	oos2	handwritten	en	out_of_scope	tell me a joke
+dev	oos3	handwritten	en	out_of_scope	book me a flight to Delhi
+test	oos4	handwritten	en	out_of_scope	who won the cricket match yesterday
+test	ed4	handwritten	en	explain_delay	what is making me fall behind in [[AI|COURSE]]
+dev	cs4	handwritten	en	query_course_status	give me the [[DBMS|COURSE]] course status
+test	ll4	handwritten	en	query_last_lecture	what was covered in my previous [[DBMS|COURSE]] class
+test	nc4	handwritten	en	query_next_class	which class do I have next
+dev	wif4	handwritten	en	what_if_schedule_change	what happens to my syllabus timeline if I miss two classes
