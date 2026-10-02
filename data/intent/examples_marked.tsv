@@ -313,3 +313,13 @@ train	aug_out_of_scope_07	synthetic	en	out_of_scope	book a hotel for me
 train	aug_out_of_scope_08	synthetic	hinglish	out_of_scope	mujhe ek joke suna do
 train	aug_out_of_scope_09	synthetic	hinglish	out_of_scope	Delhi mein weather kaisa hai
 train	aug_out_of_scope_10	synthetic	hinglish	out_of_scope	mere liye pizza order kar do
+train	aug_att_11	synthetic	en	query_attendance_low	show students below [[75 percent|THRESHOLD]] attendance
+train	aug_att_12	synthetic	en	query_attendance_low	which students have attendance under [[75 percent|THRESHOLD]]
+train	aug_att_13	synthetic	en	query_attendance_low	who is below [[80%|THRESHOLD]] attendance
+train	aug_att_14	synthetic	en	query_attendance_low	list students below [[80 percent|THRESHOLD]]
+train	aug_att_15	synthetic	hinglish	query_attendance_low	[[75 percent|THRESHOLD]] se kam attendance wale students batao
+train	aug_date_01	synthetic	en	cancel_class	cancel the [[tomorrow|DATE]] morning class
+train	aug_date_02	synthetic	en	cancel_class	cancel the class on [[Friday|DATE]]
+train	aug_date_03	synthetic	en	reschedule_class	move the [[Monday|DATE]] DBMS lecture to [[Wednesday|NEW_DATE]]
+train	aug_date_04	synthetic	en	what_if_schedule_change	what happens if I miss class [[tomorrow|DATE]]
+train	aug_date_05	synthetic	hinglish	cancel_class	[[kal|DATE]] wali class cancel kar do
