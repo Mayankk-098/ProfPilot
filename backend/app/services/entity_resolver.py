@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from sqlalchemy.orm import Session
-
+from app.services.temporal_resolver import resolve_temporal_entities
 from app.models.academic import Course
 
 
@@ -137,17 +137,26 @@ def resolve_entities(
         db=db,
         course_text=course_text,
     )
-
+    temporal = resolve_temporal_entities(
+        nlp_analysis=nlp_analysis,
+    )
     return {
         "course_id": (
             resolved_course_id
             or fallback_course_id
         ),
         "course_text": course_text,
+
         "date_text": date_text,
         "new_date_text": new_date_text,
         "time_text": time_text,
         "new_time_text": new_time_text,
+
+        "resolved_date": temporal["date"],
+        "resolved_new_date": temporal["new_date"],
+        "resolved_time": temporal["time"],
+        "resolved_new_time": temporal["new_time"],
+
         "batch_text": batch_text,
         "topic_text": topic_text,
         "room_text": room_text,
