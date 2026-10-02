@@ -418,3 +418,4 @@ class ProfPilotAI:
 
             "confidence": 0.72,
         }
+ai = ProfPilotAI()
