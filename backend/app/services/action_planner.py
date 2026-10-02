@@ -1,9 +1,14 @@
 from __future__ import annotations
 
+from sqlalchemy.orm import Session
+
+from ai.syllabus.mapper import map_and_format
+
 
 def plan_action(
     intent: str | None,
     resolved_entities: dict,
+    db: Session | None = None,
 ) -> dict | None:
     """
     Convert an understood intent + resolved entities
@@ -31,7 +36,8 @@ def plan_action(
 
     if intent == "log_lecture":
         return plan_log_lecture_action(
-            resolved_entities
+            resolved_entities,
+            db=db,
         )
 
     return None
@@ -194,6 +200,7 @@ def plan_notify_action(
 
 def plan_log_lecture_action(
     entities: dict,
+    db: Session | None = None,
 ) -> dict:
     course_id = entities.get(
         "course_id"
@@ -228,6 +235,39 @@ def plan_log_lecture_action(
             "proposal": None,
         }
 
+    # -------------------------------------------------
+    # LECTURE → SYLLABUS MAPPING
+    # -------------------------------------------------
+
+    syllabus_matches = []
+    mapping_status = "not_run"
+    mapping_error = None
+
+    if db is not None:
+        try:
+            mapping_result = map_and_format(
+                db=db,
+                course_id=course_id,
+                lecture_description=topic,
+                top_k=5,
+            )
+
+            syllabus_matches = mapping_result.get(
+                "matches",
+                []
+            )
+
+            if syllabus_matches:
+                mapping_status = "matched"
+            else:
+                mapping_status = "no_match"
+
+        except Exception as exc:
+            # Mapping should not prevent the lecturer
+            # from preparing a lecture record.
+            mapping_status = "error"
+            mapping_error = str(exc)
+
     return {
         "action": "log_lecture",
         "status": "proposed",
@@ -238,5 +278,10 @@ def plan_log_lecture_action(
             "topic": topic,
             "date": date,
             "duration": duration,
+
+            # New AI intelligence information
+            "syllabus_matches": syllabus_matches,
+            "mapping_status": mapping_status,
+            "mapping_error": mapping_error,
         },
     }

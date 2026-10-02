@@ -70,12 +70,72 @@ def build_action_message(
         )
 
     if action == "log_lecture":
-        return (
+        answer = (
             f"I can prepare a lecture record for "
             f"{proposal['course_id'].upper()} covering "
-            f"{proposal['topic']}. "
-            "Would you like me to proceed?"
+            f"{proposal['topic']}"
         )
+
+        if proposal.get("date"):
+            answer += f" on {proposal['date']}"
+
+        if proposal.get("duration"):
+            answer += f" for {proposal['duration']}"
+
+        matches = proposal.get(
+            "syllabus_matches",
+            []
+        )
+
+        if matches:
+            answer += (
+                ".\n\n"
+                "I matched it to these syllabus topics:\n"
+            )
+
+            for match in matches:
+                # Support the mapper's current output keys.
+                topic_name = (
+                    match.get("topic_name")
+                    or match.get("topic")
+                    or match.get("name")
+                    or "Unknown topic"
+                )
+
+                unit_name = (
+                    match.get("unit_name")
+                    or match.get("unit")
+                    or "Unknown unit"
+                )
+
+                score = match.get(
+                    "score",
+                    0.0
+                )
+
+                answer += (
+                    f"• {topic_name} "
+                    f"(Unit: {unit_name}, "
+                    f"score: {score:.2f})\n"
+                )
+
+        elif proposal.get("mapping_status") == "no_match":
+            answer += (
+                ".\n\n"
+                "I couldn't confidently match "
+                "this lecture to the current syllabus."
+            )
+
+        elif proposal.get("mapping_status") == "error":
+            answer += (
+                ".\n\n"
+                "The lecture will still be prepared, "
+                "but syllabus mapping could not be completed."
+            )
+
+        answer += "\nWould you like me to proceed?"
+
+        return answer
 
     return (
         "I understood the requested action, "
@@ -129,6 +189,7 @@ class ProfPilotAI:
         action_plan = plan_action(
             intent=intent,
             resolved_entities=resolved_entities,
+            db=db,
         )
 
         if action_plan is not None:
