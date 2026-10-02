@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 
 from sqlalchemy.orm import Session
-
+from app.services.entity_resolver import resolve_entities
 from app.services.context_engine import (
     build_academic_context,
 )
@@ -47,11 +47,18 @@ class ProfPilotAI:
         # --------------------------------
         # BUILD REAL ACADEMIC CONTEXT
         # --------------------------------
+        resolved_entities = resolve_entities(
+            db=db,
+            nlp_analysis=nlp_analysis,
+            fallback_course_id=course_id,
+        )
+
+        effective_course_id = resolved_entities["course_id"]
 
         context = build_academic_context(
             db=db,
             lecturer_id=lecturer_id,
-            course_id=course_id,
+            course_id=effective_course_id,
         )
 
         course = context["selected_course"]
@@ -60,7 +67,7 @@ class ProfPilotAI:
             db=db,
             query=message,
             lecturer_id=lecturer_id,
-            course_id=course_id,
+            course_id=effective_course_id,
             limit=5,
         )
 
