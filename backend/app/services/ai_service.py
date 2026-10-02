@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta
-
+from app.services.action_planner import plan_action
 from sqlalchemy.orm import Session
 from app.services.entity_resolver import resolve_entities
 from app.services.context_engine import (
@@ -9,6 +9,78 @@ from app.services.memory_relevance import (
     get_relevant_memories,
 )
 
+def build_action_message(
+    action_plan: dict,
+) -> str:
+    action = action_plan["action"]
+
+    proposal = action_plan["proposal"]
+
+    if action == "cancel_class":
+        course_id = proposal["course_id"]
+        date = proposal["date"]
+        time = proposal["time"]
+
+        answer = (
+            f"I can prepare the cancellation of "
+            f"{course_id.upper()} on {date}"
+        )
+
+        if time:
+            answer += f" at {time}"
+
+        answer += ". Would you like me to proceed?"
+
+        return answer
+
+    if action == "reschedule_class":
+        course_id = proposal["course_id"]
+        date = proposal["date"]
+        time = proposal["time"]
+        new_date = proposal["new_date"]
+        new_time = proposal["new_time"]
+
+        answer = (
+            f"I can prepare a reschedule for "
+            f"{course_id.upper()}"
+        )
+
+        if date:
+            answer += f" on {date}"
+
+        if time:
+            answer += f" at {time}"
+
+        if new_date:
+            answer += f" → {new_date}"
+
+        if new_time:
+            answer += f" at {new_time}"
+
+        answer += ". Would you like me to proceed?"
+
+        return answer
+
+    if action == "notify_batch":
+        return (
+            f"I can prepare a notification for "
+            f"{proposal['batch']} about "
+            f"{proposal['course_id'].upper()}. "
+            "Would you like me to proceed?"
+        )
+
+    if action == "log_lecture":
+        return (
+            f"I can prepare a lecture record for "
+            f"{proposal['course_id'].upper()} covering "
+            f"{proposal['topic']}. "
+            "Would you like me to proceed?"
+        )
+
+    return (
+        "I understood the requested action, "
+        "but I need more information before proceeding."
+    )
 
 class ProfPilotAI:
 
@@ -54,6 +126,45 @@ class ProfPilotAI:
         )
 
         effective_course_id = resolved_entities["course_id"]
+        action_plan = plan_action(
+            intent=intent,
+            resolved_entities=resolved_entities,
+        )
+
+        if action_plan is not None:
+            if action_plan["status"] == "needs_clarification":
+                missing_text = ", ".join(
+                    action_plan["missing"]
+                )
+
+                return {
+                    "type": "action_clarification",
+                    "answer": (
+                        "I understand that you want to "
+                        f"{action_plan['action'].replace('_', ' ')}, "
+                        f"but I need the following information: "
+                        f"{missing_text}."
+                    ),
+                    "data": {
+                        "action_plan": action_plan,
+                        "resolved_entities": resolved_entities,
+                    },
+                    "confidence": 0.90,
+                    "requires_confirmation": True,
+                }
+
+            return {
+                "type": "action_proposal",
+                "answer": build_action_message(
+                    action_plan
+                ),
+                "data": {
+                    "action_plan": action_plan,
+                    "resolved_entities": resolved_entities,
+                },
+                "confidence": 0.90,
+                "requires_confirmation": True,
+            }
 
         context = build_academic_context(
             db=db,
