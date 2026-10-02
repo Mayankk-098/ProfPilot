@@ -18,20 +18,20 @@ def query_ai(
     request: AIQuery,
     db: Session = Depends(get_db),
 ):
-    # Existing ProfPilot reasoning.
-    response = ai.query(
-        message=request.message,
-        db=db,
-        course_id=request.course_id,
-    )
-
-    # New learned NLP layer.
+    # Run the learned NLP layer first.
     nlp_analysis = analyze_query(
         request.message
     )
 
-    # Attach NLP output without changing
-    # the existing AI response structure.
+    # Give the NLP result to the academic reasoning layer.
+    response = ai.query(
+        message=request.message,
+        db=db,
+        course_id=request.course_id,
+        nlp_analysis=nlp_analysis,
+    )
+
+    # Keep exposing the NLP result for debugging/evaluation.
     response["nlp"] = nlp_analysis
 
     return response
