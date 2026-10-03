@@ -43,7 +43,6 @@ def extract_entity(
     if not values:
         return None
 
-    # Preserve multiple entities of the same type.
     return " ".join(values)
 
 
@@ -53,19 +52,6 @@ def extract_lecture_topic(
     """
     Recover the full lecture topic phrase for log_lecture
     requests.
-
-    The trained NER model may only tag one part of a
-    multi-word/multi-concept lecture description.
-
-    Example:
-        "Log today's DBMS lecture on functional dependencies
-         and normalization"
-
-    NER might detect:
-        TOPIC = normalization
-
-    This fallback recovers:
-        functional dependencies and normalization
     """
 
     if not nlp_analysis:
@@ -101,7 +87,6 @@ def extract_lecture_topic(
         if match:
             topic = match.group(1).strip()
 
-            # Remove trailing punctuation.
             topic = topic.rstrip(
                 " .,!?"
             )
@@ -117,8 +102,11 @@ def resolve_course_id(
     course_text: str | None,
 ) -> str | None:
     """
-    Resolve a model-extracted course name/code
-    to the actual database course ID.
+    Resolve an explicitly mentioned course against
+    the courses present in the database.
+
+    Returns None when the mentioned course cannot
+    be resolved.
     """
 
     if not course_text:
@@ -133,7 +121,10 @@ def resolve_course_id(
         .all()
     )
 
-    # Exact matching first.
+    # -----------------------------------------
+    # EXACT MATCH
+    # -----------------------------------------
+
     for course in courses:
         candidates = {
             normalize_text(course.id),
@@ -145,7 +136,10 @@ def resolve_course_id(
         if query in candidates:
             return course.id
 
-    # Natural-language substring fallback.
+    # -----------------------------------------
+    # SUBSTRING MATCH
+    # -----------------------------------------
+
     for course in courses:
         fields = [
             normalize_text(course.code),
@@ -171,7 +165,22 @@ def resolve_entities(
 ) -> dict:
     """
     Convert raw NLP entities into canonical academic values.
+
+    Course resolution rules:
+
+    1. If the user explicitly mentions a course,
+       resolve ONLY that course.
+
+    2. If the explicit course cannot be found,
+       DO NOT fall back to the contextual course.
+
+    3. If the user does not mention a course,
+       fallback_course_id may be used as context.
     """
+
+    # -----------------------------------------
+    # RAW ENTITIES
+    # -----------------------------------------
 
     course_text = extract_entity(
         nlp_analysis,
@@ -203,15 +212,11 @@ def resolve_entities(
         "BATCH",
     )
 
-    # First use the learned TOPIC entity.
     topic_text = extract_entity(
         nlp_analysis,
         "TOPIC",
     )
 
-    # For lecture logging, recover the complete
-    # lecture subject phrase when the NER model
-    # captured only part of it.
     full_lecture_topic = extract_lecture_topic(
         nlp_analysis
     )
@@ -234,22 +239,59 @@ def resolve_entities(
         "DURATION",
     )
 
+    # -----------------------------------------
+    # COURSE RESOLUTION
+    # -----------------------------------------
+
     resolved_course_id = resolve_course_id(
         db=db,
         course_text=course_text,
     )
 
+    if course_text:
+        # User explicitly mentioned a course.
+        #
+        # NEVER silently replace it with
+        # fallback_course_id.
+        effective_course_id = (
+            resolved_course_id
+        )
+
+        course_resolution_failed = (
+            resolved_course_id is None
+        )
+
+    else:
+        # No explicit course mentioned.
+        # Contextual fallback is safe here.
+        effective_course_id = (
+            fallback_course_id
+        )
+
+        course_resolution_failed = False
+
+    # -----------------------------------------
+    # TEMPORAL ENTITIES
+    # -----------------------------------------
+
     temporal = resolve_temporal_entities(
         nlp_analysis=nlp_analysis,
     )
 
+    # -----------------------------------------
+    # RETURN
+    # -----------------------------------------
+
     return {
         "course_id": (
-            resolved_course_id
-            or fallback_course_id
+            effective_course_id
         ),
 
         "course_text": course_text,
+
+        "course_resolution_failed": (
+            course_resolution_failed
+        ),
 
         "date_text": date_text,
         "new_date_text": new_date_text,
@@ -268,6 +310,8 @@ def resolve_entities(
         "topic_text": topic_text,
 
         "room_text": room_text,
+
         "threshold_text": threshold_text,
+
         "duration_text": duration_text,
     }

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 from datetime import datetime
+from math import isfinite
 from uuid import uuid4
 
 from sqlalchemy.orm import Session
@@ -13,6 +14,10 @@ from app.models.academic import (
     SyllabusTopic,
     SyllabusUnit,
 )
+
+
+# Keep execution at least as conservative as the syllabus mapper.
+MIN_EXECUTION_MATCH_SCORE = 0.15
 
 
 def _normalize_text(value: str | None) -> str:
@@ -218,6 +223,8 @@ def _recalculate_course_progress(
     else:
         course_progress = 0.0
 
+    # Keep the cached Course.progress field
+    # synchronized for legacy compatibility.
     course.progress = course_progress
 
     # The lecture has already been flushed
@@ -254,6 +261,89 @@ def _recalculate_course_progress(
     }
 
 
+def _validate_mapping_matches(
+    matches: list,
+) -> list[dict]:
+    """
+    Validate and normalize mapper results before
+    allowing them to mutate syllabus state.
+
+    Rules:
+    - result must be a dictionary
+    - topic ID must exist
+    - score must be numeric and finite
+    - score must meet MIN_EXECUTION_MATCH_SCORE
+    - duplicate topic IDs are removed
+    - results are returned in descending score order
+    """
+
+    validated_matches = []
+    seen_topic_ids = set()
+
+    for match in matches or []:
+        if not isinstance(match, dict):
+            continue
+
+        topic_id = (
+            match.get("topic_id")
+            or match.get("id")
+        )
+
+        if not topic_id:
+            continue
+
+        topic_id = str(topic_id)
+
+        if topic_id in seen_topic_ids:
+            continue
+
+        raw_score = match.get(
+            "score",
+            0.0,
+        )
+
+        try:
+            score = float(raw_score)
+        except (
+            TypeError,
+            ValueError,
+        ):
+            continue
+
+        if not isfinite(score):
+            continue
+
+        if score < MIN_EXECUTION_MATCH_SCORE:
+            continue
+
+        # Cosine-style mapper scores should normally
+        # be within [0, 1]. Reject malformed values.
+        if score > 1.0:
+            continue
+
+        normalized_match = dict(match)
+
+        normalized_match["topic_id"] = (
+            topic_id
+        )
+        normalized_match["score"] = round(
+            score,
+            4,
+        )
+
+        validated_matches.append(
+            normalized_match
+        )
+        seen_topic_ids.add(topic_id)
+
+    validated_matches.sort(
+        key=lambda item: item["score"],
+        reverse=True,
+    )
+
+    return validated_matches
+
+
 def execute_log_lecture_action(
     action_plan: dict,
     db: Session,
@@ -266,11 +356,13 @@ def execute_log_lecture_action(
     1. Validate proposal
     2. Prevent duplicate execution
     3. Re-run syllabus mapping
-    4. Create LectureLog
-    5. Mark newly matched topics complete
-    6. Flush the lecture into the DB
-    7. Recalculate academic state
-    8. Commit transaction
+    4. Validate mapping confidence
+    5. Validate matched topics belong to the course
+    6. Create LectureLog
+    7. Mark newly matched topics complete
+    8. Flush the lecture into the DB
+    9. Recalculate academic state
+    10. Commit transaction
     """
 
     proposal = action_plan.get(
@@ -367,31 +459,127 @@ def execute_log_lecture_action(
     # -------------------------------------------------
     # RE-RUN SYLLABUS MAPPING
     # -------------------------------------------------
+    #
+    # Important:
+    # We intentionally re-run the mapper at execution
+    # time instead of trusting stale proposal data.
+    # -------------------------------------------------
 
     mapping_result = map_and_format(
         db=db,
         course_id=course_id,
         lecture_description=topic,
         top_k=5,
+        min_score=MIN_EXECUTION_MATCH_SCORE,
     )
 
-    matches = mapping_result.get(
+    raw_matches = mapping_result.get(
         "matches",
         [],
     )
 
-    matched_topic_ids = []
+    matches = _validate_mapping_matches(
+        raw_matches
+    )
 
-    for match in matches:
-        topic_id = (
-            match.get("topic_id")
-            or match.get("id")
+    # -------------------------------------------------
+    # MAPPING SAFETY GATE
+    # -------------------------------------------------
+    #
+    # Never create a lecture record or mutate syllabus
+    # state when the lecture cannot be confidently mapped.
+    # -------------------------------------------------
+
+    if not matches:
+        return {
+            "status": "mapping_failed",
+            "message": (
+                "The lecture could not be mapped "
+                "confidently to a syllabus topic. "
+                "No lecture record was created."
+            ),
+            "mapping": {
+                "matches": [],
+                "mapping_status": (
+                    mapping_result.get(
+                        "mapping_status"
+                    )
+                ),
+                "mapping_error": (
+                    mapping_result.get(
+                        "mapping_error"
+                    )
+                ),
+                "minimum_score": (
+                    MIN_EXECUTION_MATCH_SCORE
+                ),
+            },
+        }
+
+    # -------------------------------------------------
+    # VALIDATE TOPIC IDS
+    # -------------------------------------------------
+
+    matched_topic_ids = [
+        match["topic_id"]
+        for match in matches
+    ]
+
+    # SyllabusTopic is related to a course through
+    # SyllabusUnit, so explicitly validate that every
+    # matched topic belongs to this course.
+    topics = (
+        db.query(SyllabusTopic)
+        .join(
+            SyllabusUnit,
+            SyllabusTopic.unit_id
+            == SyllabusUnit.id,
         )
+        .filter(
+            SyllabusTopic.id.in_(
+                matched_topic_ids
+            ),
+            SyllabusUnit.course_id
+            == course_id,
+        )
+        .all()
+    )
 
-        if topic_id:
-            matched_topic_ids.append(
-                topic_id
-            )
+    topic_by_id = {
+        str(syllabus_topic.id): syllabus_topic
+        for syllabus_topic in topics
+    }
+
+    missing_topic_ids = [
+        topic_id
+        for topic_id in matched_topic_ids
+        if topic_id not in topic_by_id
+    ]
+
+    # Never allow a mapper result pointing to a topic
+    # outside the requested course to mutate the database.
+    if missing_topic_ids:
+        return {
+            "status": "mapping_failed",
+            "message": (
+                "One or more mapped syllabus topics "
+                "could not be verified for this course. "
+                "No lecture record was created."
+            ),
+            "mapping": {
+                "matches": matches,
+                "invalid_topic_ids": (
+                    missing_topic_ids
+                ),
+                "course_id": course_id,
+            },
+        }
+
+    # Reorder according to mapper confidence.
+    verified_topics = [
+        topic_by_id[topic_id]
+        for topic_id in matched_topic_ids
+    ]
 
     # -------------------------------------------------
     # CREATE LECTURE
@@ -413,24 +601,13 @@ def execute_log_lecture_action(
 
     completed_topic_names = []
 
-    if matched_topic_ids:
-        topics = (
-            db.query(SyllabusTopic)
-            .filter(
-                SyllabusTopic.id.in_(
-                    matched_topic_ids
-                )
+    for syllabus_topic in verified_topics:
+        if not syllabus_topic.completed:
+            syllabus_topic.completed = True
+
+            completed_topic_names.append(
+                syllabus_topic.name
             )
-            .all()
-        )
-
-        for syllabus_topic in topics:
-            if not syllabus_topic.completed:
-                syllabus_topic.completed = True
-
-                completed_topic_names.append(
-                    syllabus_topic.name
-                )
 
     # -------------------------------------------------
     # IMPORTANT:

@@ -1,3 +1,4 @@
+import re
 from app.services.action_planner import plan_action
 from sqlalchemy.orm import Session
 from app.services.entity_resolver import resolve_entities
@@ -16,6 +17,7 @@ from app.services.syllabus_drift_engine import (
 from app.services.memory_relevance import (
     get_relevant_memories,
 )
+
 
 def build_action_message(
     action_plan: dict,
@@ -92,7 +94,7 @@ def build_action_message(
 
         matches = proposal.get(
             "syllabus_matches",
-            []
+            [],
         )
 
         if matches:
@@ -118,7 +120,7 @@ def build_action_message(
 
                 score = match.get(
                     "score",
-                    0.0
+                    0.0,
                 )
 
                 answer += (
@@ -127,14 +129,18 @@ def build_action_message(
                     f"score: {score:.2f})\n"
                 )
 
-        elif proposal.get("mapping_status") == "no_match":
+        elif proposal.get(
+            "mapping_status"
+        ) == "no_match":
             answer += (
                 ".\n\n"
                 "I couldn't confidently match "
                 "this lecture to the current syllabus."
             )
 
-        elif proposal.get("mapping_status") == "error":
+        elif proposal.get(
+            "mapping_status"
+        ) == "error":
             answer += (
                 ".\n\n"
                 "The lecture will still be prepared, "
@@ -149,6 +155,7 @@ def build_action_message(
         "I understood the requested action, "
         "but I need more information before proceeding."
     )
+
 
 class ProfPilotAI:
 
@@ -167,10 +174,182 @@ class ProfPilotAI:
         # If nlp_analysis is not supplied, the legacy keyword
         # routing below remains available as a fallback.
         intent = None
-        if nlp_analysis:
-            intent = nlp_analysis.get("intent")
 
-        def route_to(expected_intent: str, *legacy_phrases: str) -> bool:
+        if nlp_analysis:
+            intent = nlp_analysis.get(
+                "intent"
+            )
+
+            # --------------------------------
+            # EXPLICIT ACTION OVERRIDE
+            # --------------------------------
+            #
+            # A clear action phrase should not be
+            # classified as out_of_scope merely because
+            # the ML classifier is uncertain.
+            #
+            # Example:
+            # "log a DBMS lecture about databases"
+            #
+            # The action is clear, but the lecture topic
+            # itself may still be missing. Let action_planner
+            # handle that as a clarification request.
+            # --------------------------------
+
+            # --------------------------------
+            # EXPLICIT ACTION OVERRIDE
+            # --------------------------------
+
+            explicit_action_override = False
+
+            if intent == "out_of_scope":
+                original_message_lower = (
+                    message.lower().strip()
+                )
+
+                starts_with_action = (
+                    original_message_lower.startswith("log ")
+                    or original_message_lower.startswith("record ")
+                    or original_message_lower.startswith("add ")
+                    or original_message_lower.startswith("mark ")
+                )
+
+                mentions_lecture_or_class = (
+                    "lecture" in original_message_lower
+                    or "class" in original_message_lower
+                )
+
+                if (
+                    starts_with_action
+                    and mentions_lecture_or_class
+                ):
+                    intent = "log_lecture"
+                    explicit_action_override = True
+
+                    if explicit_action_override and nlp_analysis:
+                        nlp_analysis["intent"] = intent
+
+            # --------------------------------
+            # ACTION SAFETY GATE
+            # --------------------------------
+
+            action_intents = {
+                "cancel_class",
+                "reschedule_class",
+                "log_lecture",
+                "notify_batch",
+            }
+
+            if (
+                intent in action_intents
+                and not explicit_action_override
+            ):
+                intent_score = float(
+                    nlp_analysis.get(
+                        "intent_score",
+                        0.0,
+                    )
+                )
+
+                top_intents = (
+                    nlp_analysis.get(
+                        "top_intents",
+                        [],
+                    )
+                )
+
+                second_score = 0.0
+
+                if len(top_intents) > 1:
+                    second_score = float(
+                        top_intents[1].get(
+                            "score",
+                            0.0,
+                        )
+                    )
+
+                intent_margin = (
+                    intent_score
+                    - second_score
+                )
+
+                MIN_ACTION_CONFIDENCE = 0.20
+                MIN_ACTION_MARGIN = 0.08
+
+                if (
+                    intent_score
+                    < MIN_ACTION_CONFIDENCE
+                    or intent_margin
+                    < MIN_ACTION_MARGIN
+                ):
+                    intent = None
+
+                    # --------------------------------
+                    # ACTION SAFETY GATE
+                    # --------------------------------
+                    #
+                    # Mutating actions require stronger
+                    # NLP confidence than read-only queries.
+                    #
+                    # This prevents a weak/ambiguous prediction
+                    # from automatically reaching action_planner.
+                    # --------------------------------
+
+                    action_intents = {
+                        "cancel_class",
+                        "reschedule_class",
+                        "log_lecture",
+                        "notify_batch",
+                    }
+
+                    if intent in action_intents:
+                        intent_score = float(
+                            nlp_analysis.get(
+                                "intent_score",
+                                0.0,
+                            )
+                        )
+
+                        top_intents = (
+                            nlp_analysis.get(
+                                "top_intents",
+                                [],
+                            )
+                        )
+
+                        second_score = 0.0
+
+                        if len(top_intents) > 1:
+                            second_score = float(
+                                top_intents[1].get(
+                                    "score",
+                                    0.0,
+                                )
+                            )
+
+                        intent_margin = (
+                            intent_score
+                            - second_score
+                        )
+
+                        MIN_ACTION_CONFIDENCE = 0.20
+                        MIN_ACTION_MARGIN = 0.08
+
+                        if (
+                            intent_score
+                            < MIN_ACTION_CONFIDENCE
+                            or intent_margin
+                            < MIN_ACTION_MARGIN
+                        ):
+                            # Treat the action as unresolved.
+                            # Do NOT let action_planner create
+                            # a mutation proposal.
+                            intent = None
+
+        def route_to(
+            expected_intent: str,
+            *legacy_phrases: str,
+        ) -> bool:
             """
             Use the learned intent when available.
             Fall back to legacy keyword matching only when
@@ -185,7 +364,8 @@ class ProfPilotAI:
             )
 
         def is_syllabus_drift_query() -> bool:
-            """Detect explicit syllabus-plan/drift questions.
+            """
+            Detect explicit syllabus-plan/drift questions.
 
             The learned intent model remains the primary router.
             This narrow secondary detector covers the new capability
@@ -215,13 +395,39 @@ class ProfPilotAI:
         # --------------------------------
         # BUILD REAL ACADEMIC CONTEXT
         # --------------------------------
+
         resolved_entities = resolve_entities(
             db=db,
             nlp_analysis=nlp_analysis,
             fallback_course_id=course_id,
         )
 
-        effective_course_id = resolved_entities["course_id"]
+        effective_course_id = (
+            resolved_entities["course_id"]
+        )
+
+        if resolved_entities.get(
+            "course_resolution_failed"
+        ):
+            return {
+                "type": "course_not_found",
+                "answer": (
+                    f"I couldn't find "
+                    f"'{resolved_entities['course_text']}' "
+                    "in the current academic records. "
+                    "Please check the course name or code."
+                ),
+                "data": {
+                    "course_text": (
+                        resolved_entities[
+                            "course_text"
+                        ]
+                    ),
+                },
+                "confidence": 0.95,
+                "requires_confirmation": False,
+            }
+
         action_plan = plan_action(
             intent=intent,
             resolved_entities=resolved_entities,
@@ -229,7 +435,94 @@ class ProfPilotAI:
         )
 
         if action_plan is not None:
-            if action_plan["status"] == "needs_clarification":
+            # --------------------------------
+            # LOG LECTURE WITH NO SYLLABUS MATCH
+            # --------------------------------
+            #
+            # A topic may be present but still be too
+            # vague to map to the current syllabus.
+            # Do not create a confirmation proposal
+            # in that case.
+            # --------------------------------
+
+            if (
+                action_plan.get("action") == "log_lecture"
+                and action_plan.get("proposal")
+                and action_plan["proposal"].get(
+                    "mapping_status"
+                ) == "no_match"
+            ):
+                topic_text = (
+                    resolved_entities.get("topic_text")
+                    or action_plan["proposal"].get("topic")
+                    or "that topic"
+                )
+
+                clarification_plan = {
+                    "action": "log_lecture",
+                    "status": "needs_clarification",
+                    "requires_confirmation": False,
+                    "missing": [
+                        "a specific syllabus topic"
+                    ],
+                    "proposal": None,
+                }
+
+                return {
+                    "type": "action_clarification",
+                    "answer": (
+                        f"I understand that you want to log a "
+                        f"lecture, but I couldn't match "
+                        f"'{topic_text}' to the current syllabus. "
+                        "Please give me a specific syllabus topic "
+                        "such as Indexing, B Trees, or B+ Trees."
+                    ),
+                    "data": {
+                        "action_plan": clarification_plan,
+                        "resolved_entities": resolved_entities,
+                    },
+                    "confidence": 0.90,
+                    "requires_confirmation": False,
+                }
+
+            # --------------------------------
+            # UNSUPPORTED ACTION
+            # --------------------------------
+            #
+            # The planner may understand an action
+            # that the executor does not implement yet.
+            #
+            # Do not ask for confirmation when the
+            # action cannot actually be executed.
+            # --------------------------------
+
+            if (
+                action_plan["status"]
+                == "unsupported"
+            ):
+                return {
+                    "type": "action_unavailable",
+                    "answer": (
+                        f"I understand that you want to "
+                        f"{action_plan['action'].replace('_', ' ')}, "
+                        "but that action is not executable "
+                        "in the current ProfPilot version yet."
+                    ),
+                    "data": {
+                        "action": (
+                            action_plan[
+                                "action"
+                            ]
+                        ),
+                    },
+                    "confidence": 0.95,
+                    "requires_confirmation": False,
+                }
+
+            if (
+                action_plan["status"]
+                == "needs_clarification"
+            ):
                 missing_text = ", ".join(
                     action_plan["missing"]
                 )
@@ -239,7 +532,7 @@ class ProfPilotAI:
                     "answer": (
                         "I understand that you want to "
                         f"{action_plan['action'].replace('_', ' ')}, "
-                        f"but I need the following information: "
+                        "but I need the following information: "
                         f"{missing_text}."
                     ),
                     "data": {
@@ -261,6 +554,38 @@ class ProfPilotAI:
                 },
                 "confidence": 0.90,
                 "requires_confirmation": True,
+            }
+
+        # --------------------------------
+        # OUT-OF-SCOPE QUERY
+        # --------------------------------
+        #
+        # Do not fall through to the academic
+        # context for queries that the trained
+        # classifier explicitly identifies as
+        # outside ProfPilot's domain.
+        # --------------------------------
+        
+        if intent == "out_of_scope":
+            return {
+                "type": "out_of_scope",
+                "answer": (
+                    "I can help with your academic "
+                    "work, such as course progress, "
+                    "syllabus tracking, lecture records, "
+                    "predictions, schedules, and "
+                    "academic planning."
+                ),
+                "data": {},
+                "confidence": float(
+                    nlp_analysis.get(
+                        "intent_score",
+                        0.0,
+                    )
+                    if nlp_analysis
+                    else 0.0
+                ),
+                "requires_confirmation": False,
             }
 
         context = build_academic_context(
@@ -286,16 +611,21 @@ class ProfPilotAI:
                 f"- {memory.title}: {memory.summary}"
             )
 
-        memory_context = "\n".join(memory_lines)
+        memory_context = "\n".join(
+            memory_lines
+        )
 
         if not memory_context:
-            memory_context = "No relevant academic memories found."
+            memory_context = (
+                "No relevant academic memories found."
+            )
 
         # --------------------------------
         # SYLLABUS DRIFT DETECTION
         # --------------------------------
 
         if is_syllabus_drift_query():
+
             if not effective_course_id:
                 return {
                     "type": "error",
@@ -312,7 +642,9 @@ class ProfPilotAI:
                 course_id=effective_course_id,
             )
 
-            if drift_result.get("status") != "ok":
+            if drift_result.get(
+                "status"
+            ) != "ok":
                 return {
                     "type": "syllabus_drift",
                     "answer": (
@@ -329,13 +661,25 @@ class ProfPilotAI:
             signals = drift_result["signals"]
 
             if severity == "high_drift":
-                status_text = "shows substantial deviation from the current plan"
+                status_text = (
+                    "shows substantial deviation "
+                    "from the current plan"
+                )
             elif severity == "moderate_drift":
-                status_text = "shows a moderate deviation from the current plan"
+                status_text = (
+                    "shows a moderate deviation "
+                    "from the current plan"
+                )
             elif severity == "mild_drift":
-                status_text = "shows a mild deviation from the current plan"
+                status_text = (
+                    "shows a mild deviation "
+                    "from the current plan"
+                )
             else:
-                status_text = "is broadly aligned with the current plan"
+                status_text = (
+                    "is broadly aligned "
+                    "with the current plan"
+                )
 
             answer = (
                 f"{course['name']} {status_text}. "
@@ -356,28 +700,38 @@ class ProfPilotAI:
                 )
 
             answer += (
-                f" Drift score: {drift_result['drift_score']:.2f}/100."
+                f" Drift score: "
+                f"{drift_result['drift_score']:.2f}/100."
             )
 
             if signals:
                 answer += "\n\nEvidence:"
+
                 for signal in signals[:4]:
-                    if signal["type"] == "repeated_coverage":
-                        names = signal["evidence"].get(
+
+                    if (
+                        signal["type"]
+                        == "repeated_coverage"
+                    ):
+                        names = signal[
+                            "evidence"
+                        ].get(
                             "repeated_topics",
                             [],
                         )
+
                         answer += (
                             "\n• Repeated coverage: "
                             + ", ".join(names)
                         )
+
                     else:
                         answer += (
                             f"\n• {signal['description']}"
                         )
 
             answer += (
-                f"\n\nRecommendation: "
+                "\n\nRecommendation: "
                 f"{drift_result['recommendation']}"
             )
 
@@ -392,7 +746,6 @@ class ProfPilotAI:
         # --------------------------------
         # COURSE FINISH PREDICTION
         # --------------------------------
-
 
         if route_to(
             "query_course_completion",
@@ -590,6 +943,7 @@ class ProfPilotAI:
                 "confidence": 0.80,
                 "requires_confirmation": False,
             }
+
         # --------------------------------
         # WHAT-IF SCHEDULE CHANGE
         # --------------------------------
@@ -615,7 +969,10 @@ class ProfPilotAI:
                 message=message,
             )
 
-            if what_if.get("status") == "insufficient_data":
+            if (
+                what_if.get("status")
+                == "insufficient_data"
+            ):
                 return {
                     "type": "what_if",
                     "answer": (
@@ -628,7 +985,10 @@ class ProfPilotAI:
                     "requires_confirmation": False,
                 }
 
-            if what_if.get("status") == "complete":
+            if (
+                what_if.get("status")
+                == "complete"
+            ):
                 return {
                     "type": "what_if",
                     "answer": (
@@ -641,7 +1001,9 @@ class ProfPilotAI:
                     "requires_confirmation": False,
                 }
 
-            if what_if.get("status") != "ok":
+            if what_if.get(
+                "status"
+            ) != "ok":
                 return {
                     "type": "what_if",
                     "answer": (
@@ -654,24 +1016,42 @@ class ProfPilotAI:
                     "requires_confirmation": False,
                 }
 
-            scenario_label = what_if["scenario_label"]
-            baseline = what_if["baseline"]
-            simulation = what_if["simulation"]
-            evidence = what_if["evidence"]
+            scenario_label = what_if[
+                "scenario_label"
+            ]
 
-            change_days = simulation["change_days"]
-            abs_change = abs(change_days)
+            baseline = what_if[
+                "baseline"
+            ]
+
+            simulation = what_if[
+                "simulation"
+            ]
+
+            evidence = what_if[
+                "evidence"
+            ]
+
+            change_days = simulation[
+                "change_days"
+            ]
+
+            abs_change = abs(
+                change_days
+            )
 
             if change_days > 0:
                 impact_text = (
                     f"about {abs_change:.0f} day"
                     f"{'s' if abs_change != 1 else ''} later"
                 )
+
             elif change_days < 0:
                 impact_text = (
                     f"about {abs_change:.0f} day"
                     f"{'s' if abs_change != 1 else ''} earlier"
                 )
+
             else:
                 impact_text = "no change"
 
@@ -715,7 +1095,9 @@ class ProfPilotAI:
             "next class",
             "next lecture",
         ):
-            next_class = context["next_class"]
+            next_class = context[
+                "next_class"
+            ]
 
             if not next_class:
                 return {
@@ -751,7 +1133,9 @@ class ProfPilotAI:
             "last lecture",
             "previous lecture",
         ):
-            lectures = context["recent_lectures"]
+            lectures = context[
+                "recent_lectures"
+            ]
 
             if not lectures:
                 return {
@@ -832,10 +1216,17 @@ class ProfPilotAI:
                     ),
                 }
 
-            progress = course["progress"]
-            planned_progress = course["planned_progress"]
+            progress = course[
+                "progress"
+            ]
+
+            planned_progress = course[
+                "planned_progress"
+            ]
+
             gap = round(
-                planned_progress - progress,
+                planned_progress
+                - progress,
                 1,
             )
 
@@ -848,12 +1239,14 @@ class ProfPilotAI:
                     f"while planned progress is "
                     f"{planned_progress}%."
                 )
+
             elif gap < 0:
                 answer = (
                     f"Your {course['short_name']} course "
                     f"is currently {abs(gap)}% ahead of "
                     "the planned syllabus progress."
                 )
+
             else:
                 answer = (
                     f"Your {course['short_name']} course "
@@ -877,7 +1270,9 @@ class ProfPilotAI:
                 "type": "delay_explanation",
                 "answer": answer,
                 "data": {
-                    "course": course["short_name"],
+                    "course": course[
+                        "short_name"
+                    ],
                     "progress": progress,
                     "planned_progress": planned_progress,
                     "gap": gap,
@@ -943,7 +1338,9 @@ class ProfPilotAI:
         # GENERAL CONTEXT RESPONSE
         # --------------------------------
 
-        lecturer = context["lecturer"]
+        lecturer = context[
+            "lecturer"
+        ]
 
         return {
             "type": "general",
@@ -954,11 +1351,15 @@ class ProfPilotAI:
                 f"{context['summary']['total_courses']} "
                 f"active courses, with "
                 f"{context['summary']['courses_behind']} "
-                f"currently behind their planned pace."
+                "currently behind their planned pace."
             ),
             "data": {
-                "context_summary": context["summary"],
-                "alerts": context["alerts"],
+                "context_summary": context[
+                    "summary"
+                ],
+                "alerts": context[
+                    "alerts"
+                ],
             },
             "confidence": 0.72,
         }

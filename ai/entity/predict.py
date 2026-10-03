@@ -19,13 +19,13 @@ MODEL_PATH = (
 
 TOKEN_PATTERN = re.compile(
     r"""
-    \d+(?::\d+)?(?:\s?[APMapm]{2})?
-    |
     \d+(?:\.\d+)?%
+    |
+    \d+(?::\d+)?(?:\s?[APMapm]{2})?
     |
     \d+(?:\.\d+)?
     |
-    [A-Za-z]+
+    [A-Za-z]+(?:'[A-Za-z]+)?
     """,
     re.VERBOSE,
 )

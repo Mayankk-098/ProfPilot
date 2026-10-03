@@ -3,7 +3,9 @@ from __future__ import annotations
 from sqlalchemy.orm import Session
 
 from ai.syllabus.mapper import map_and_format
-
+SUPPORTED_EXECUTABLE_ACTIONS = {
+    "log_lecture",
+}
 
 def plan_action(
     intent: str | None,
@@ -12,36 +14,52 @@ def plan_action(
 ) -> dict | None:
     """
     Convert an understood intent + resolved entities
-    into a safe proposed action.
+    into an action proposal.
+
+    The planner distinguishes between:
+    - executable actions
+    - understood but currently unsupported actions
 
     IMPORTANT:
-    This function NEVER changes the database.
-    It only creates an action proposal.
+    This function never changes the database.
     """
 
-    if intent == "cancel_class":
-        return plan_cancel_action(
-            resolved_entities
-        )
+    action_by_intent = {
+        "cancel_class": "cancel_class",
+        "reschedule_class": "reschedule_class",
+        "notify_batch": "notify_batch",
+        "log_lecture": "log_lecture",
+    }
 
-    if intent == "reschedule_class":
-        return plan_reschedule_action(
-            resolved_entities
-        )
+    action = action_by_intent.get(intent)
 
-    if intent == "notify_batch":
-        return plan_notify_action(
-            resolved_entities
-        )
+    if action is None:
+        return None
 
-    if intent == "log_lecture":
+    # -----------------------------------------
+    # CAPABILITY GATE
+    # -----------------------------------------
+    #
+    # Do not create a confirmation proposal for
+    # an action that the executor cannot perform.
+    # -----------------------------------------
+
+    if action not in SUPPORTED_EXECUTABLE_ACTIONS:
+        return {
+            "action": action,
+            "status": "unsupported",
+            "requires_confirmation": False,
+            "missing": [],
+            "proposal": None,
+        }
+
+    if action == "log_lecture":
         return plan_log_lecture_action(
             resolved_entities,
             db=db,
         )
 
     return None
-
 
 def plan_cancel_action(
     entities: dict,

@@ -183,9 +183,11 @@ def build_academic_context(
             ),
             None,
         )
-
-    if selected_course is None and courses:
-        selected_course = courses[0]
+    else:
+        # Only choose the first course when the caller
+        # did not specify a course at all.
+        if courses:
+            selected_course = courses[0]
 
     selected_state = (
         course_states.get(
