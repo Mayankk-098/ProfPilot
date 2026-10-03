@@ -1,4 +1,5 @@
-from datetime import date
+from datetime import date, datetime
+
 from sqlalchemy.orm import Session
 
 from app.models.academic import (
@@ -6,6 +7,7 @@ from app.models.academic import (
     Course,
     ScheduleItem,
 )
+from app.services.academic_state import build_course_state
 
 
 def time_to_minutes(item: ScheduleItem) -> int:
@@ -23,14 +25,66 @@ def time_to_minutes(item: ScheduleItem) -> int:
     return hour * 60 + minute
 
 
-def course_to_dict(course):
+def lecture_date_value(value: str | None) -> datetime:
+    """
+    Parse supported lecture date formats so recent lectures
+    are sorted chronologically rather than by database ID.
+
+    Supported:
+        2026-10-02
+        18 September 2026
+        18 Sep 2026
+
+    Unknown/missing dates are placed at the end.
+    """
+
+    if not value:
+        return datetime.max
+
+    text = str(value).strip()
+
+    formats = (
+        "%Y-%m-%d",
+        "%d %B %Y",
+        "%d %b %Y",
+    )
+
+    for fmt in formats:
+        try:
+            return datetime.strptime(
+                text,
+                fmt,
+            )
+        except ValueError:
+            continue
+
+    return datetime.max
+
+
+def course_to_dict(
+    course: Course,
+    actual_progress: float | None = None,
+) -> dict:
+    """
+    Convert a Course model into the context representation.
+
+    When actual_progress is supplied, it is used instead of
+    the cached Course.progress value.
+    """
+
+    progress = (
+        actual_progress
+        if actual_progress is not None
+        else course.progress
+    )
+
     return {
         "id": course.id,
         "code": course.code,
         "name": course.name,
         "short_name": course.short_name,
         "section": course.section,
-        "progress": course.progress,
+        "progress": progress,
         "planned_progress": course.planned_progress,
         "current_pace": course.current_pace,
         "required_pace": course.required_pace,
@@ -41,7 +95,10 @@ def course_to_dict(course):
         "absent_today": course.absent_today,
     }
 
-def schedule_to_dict(item: ScheduleItem) -> dict:
+
+def schedule_to_dict(
+    item: ScheduleItem,
+) -> dict:
     return {
         "id": item.id,
         "subject": item.subject,
@@ -78,7 +135,6 @@ def build_academic_context(
             "Lecturer not found"
         )
 
-
     # ----------------------------------------
     # COURSES
     # ----------------------------------------
@@ -91,6 +147,26 @@ def build_academic_context(
         .all()
     )
 
+    # ----------------------------------------
+    # DERIVED ACADEMIC STATE
+    # ----------------------------------------
+    #
+    # Academic state is the source of truth for
+    # actual progress.
+    #
+    # Build it once per course so we don't repeatedly
+    # run the intelligence/state calculation later.
+    # ----------------------------------------
+
+    course_states = {}
+
+    for course in courses:
+        state = build_course_state(
+            db=db,
+            course_id=course.id,
+        )
+
+        course_states[course.id] = state
 
     # ----------------------------------------
     # SELECTED COURSE
@@ -101,9 +177,9 @@ def build_academic_context(
     if course_id:
         selected_course = next(
             (
-                c
-                for c in courses
-                if c.id == course_id
+                course
+                for course in courses
+                if course.id == course_id
             ),
             None,
         )
@@ -111,6 +187,24 @@ def build_academic_context(
     if selected_course is None and courses:
         selected_course = courses[0]
 
+    selected_state = (
+        course_states.get(
+            selected_course.id
+        )
+        if selected_course
+        else None
+    )
+
+    selected_actual_progress = (
+        float(
+            selected_state
+            .get("progress", {})
+            .get("actual", 0.0)
+        )
+        if selected_state
+        and selected_state.get("status") == "ok"
+        else None
+    )
 
     # ----------------------------------------
     # SCHEDULE
@@ -125,13 +219,11 @@ def build_academic_context(
         key=time_to_minutes
     )
 
-
     class_items = [
         item
         for item in schedule
         if item.item_type == "class"
     ]
-
 
     # ----------------------------------------
     # DEMO NEXT CLASS
@@ -150,7 +242,6 @@ def build_academic_context(
         else None
     )
 
-
     # ----------------------------------------
     # RECENT LECTURES
     # ----------------------------------------
@@ -160,10 +251,14 @@ def build_academic_context(
     if selected_course:
         recent_lectures = sorted(
             selected_course.lectures,
-            key=lambda lecture: lecture.id,
+            key=lambda lecture: (
+                lecture_date_value(
+                    lecture.date
+                ),
+                lecture.id or "",
+            ),
             reverse=True,
         )[:5]
-
 
     # ----------------------------------------
     # ACADEMIC ALERTS
@@ -173,9 +268,28 @@ def build_academic_context(
 
     for course in courses:
 
+        state = course_states.get(
+            course.id
+        )
+
+        if not state or state.get("status") != "ok":
+            continue
+
+        actual_progress = float(
+            state
+            .get("progress", {})
+            .get("actual", 0.0)
+        )
+
+        planned_progress = float(
+            state
+            .get("progress", {})
+            .get("planned", 0.0)
+        )
+
         progress_gap = (
-            course.planned_progress
-            - course.progress
+            planned_progress
+            - actual_progress
         )
 
         if progress_gap > 0:
@@ -192,43 +306,65 @@ def build_academic_context(
                 f"of planned progress."
             )
 
-
     # ----------------------------------------
     # SUMMARY
     # ----------------------------------------
 
-    courses_behind = sum(
-        1
-        for course in courses
-        if course.progress <
-        course.planned_progress
-    )
+    courses_behind = 0
+
+    for course in courses:
+        state = course_states.get(
+            course.id
+        )
+
+        if not state or state.get("status") != "ok":
+            continue
+
+        actual_progress = float(
+            state
+            .get("progress", {})
+            .get("actual", 0.0)
+        )
+
+        planned_progress = float(
+            state
+            .get("progress", {})
+            .get("planned", 0.0)
+        )
+
+        if actual_progress < planned_progress:
+            courses_behind += 1
 
     courses_on_or_ahead = (
-        len(courses) - courses_behind
+        len(courses)
+        - courses_behind
     )
-
 
     summary = {
         "total_courses": len(courses),
 
-        "courses_behind":
-            courses_behind,
+        "courses_behind": (
+            courses_behind
+        ),
 
-        "courses_on_or_ahead":
-            courses_on_or_ahead,
+        "courses_on_or_ahead": (
+            courses_on_or_ahead
+        ),
 
-        "selected_course_progress":
-            selected_course.progress
+        "selected_course_progress": (
+            selected_actual_progress
             if selected_course
-            else None,
+            else None
+        ),
 
-        "selected_course_planned_progress":
-            selected_course.planned_progress
+        "selected_course_planned_progress": (
+            float(
+                selected_course.planned_progress
+            )
             if selected_course
-            else None,
+            else None
+        ),
     }
-
 
     # ----------------------------------------
     # FINAL CONTEXT
@@ -246,7 +382,12 @@ def build_academic_context(
         },
 
         "selected_course":
-            course_to_dict(selected_course)
+            course_to_dict(
+                selected_course,
+                actual_progress=(
+                    selected_actual_progress
+                ),
+            )
             if selected_course
             else None,
 
@@ -261,7 +402,25 @@ def build_academic_context(
         ],
 
         "courses": [
-            course_to_dict(course)
+            course_to_dict(
+                course,
+                actual_progress=(
+                    float(
+                        course_states[
+                            course.id
+                        ]
+                        .get("progress", {})
+                        .get("actual", 0.0)
+                    )
+                    if course_states.get(
+                        course.id
+                    )
+                    and course_states[
+                        course.id
+                    ].get("status") == "ok"
+                    else None
+                ),
+            )
             for course in courses
         ],
 

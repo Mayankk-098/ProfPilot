@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -9,29 +10,120 @@ from sqlalchemy.orm import Session
 from app.models.academic import SyllabusTopic
 
 
+DEFAULT_MIN_SCORE = 0.15
+
+
 @dataclass
 class TopicMatch:
-    topic_id: int
+    topic_id: str
     topic_name: str
     unit_name: str
     score: float
+
+
+def _normalize_tokens(text: str | None) -> set[str]:
+    """
+    Convert text into a small normalized token set.
+
+    This is intentionally lightweight because this mapper
+    is a V1 lexical baseline, not a semantic language model.
+    """
+
+    if not text:
+        return set()
+
+    text = str(text).lower()
+
+    # Treat punctuation such as B+ or B-tree as separators.
+    text = re.sub(
+        r"[^a-z0-9]+",
+        " ",
+        text,
+    )
+
+    tokens = {
+        token
+        for token in text.split()
+        if len(token) > 1
+    }
+
+    # Remove very generic words that should not drive
+    # syllabus matching.
+    stop_words = {
+        "the",
+        "and",
+        "for",
+        "with",
+        "from",
+        "into",
+        "about",
+        "this",
+        "that",
+        "were",
+        "was",
+        "are",
+        "is",
+        "of",
+        "to",
+        "in",
+        "on",
+        "an",
+        "a",
+        "be",
+        "been",
+        "covered",
+        "cover",
+        "covers",
+        "introduced",
+        "introduction",
+        "revision",
+        "revised",
+        "discussion",
+        "discussed",
+        "lecture",
+        "class",
+        "topic",
+        "topics",
+    }
+
+    return {
+        token
+        for token in tokens
+        if token not in stop_words
+    }
 
 
 def _build_topic_text(
     topic: SyllabusTopic,
 ) -> str:
     """
-    Build the searchable representation of a syllabus topic.
-    Including the unit gives the mapper more context.
-    """
-    unit_name = ""
+    Build the searchable representation of a topic.
 
-    if topic.unit is not None:
-        unit_name = topic.unit.name or ""
+    Important:
+    The unit name is NOT injected into the searchable text.
+
+    Example:
+
+        Unit:
+            Unit 2 — Database Design
+
+        Topic:
+            Functional Dependencies
+
+    Search text becomes:
+
+        Functional Dependencies
+
+    rather than:
+
+        Unit 2 Database Design Functional Dependencies
+
+    This prevents generic unit wording from creating
+    false-positive matches.
+    """
 
     return (
-        f"{unit_name} "
-        f"{topic.name}"
+        topic.name or ""
     ).strip()
 
 
@@ -40,18 +132,26 @@ def map_lecture_to_syllabus(
     course_id: str,
     lecture_description: str,
     top_k: int = 3,
-    min_score: float = 0.05,
+    min_score: float = DEFAULT_MIN_SCORE,
 ) -> list[TopicMatch]:
     """
-    Find the syllabus topics most similar to a lecture description.
+    Find syllabus topics most similar to a lecture description.
 
-    This is a V1 lexical/TF-IDF baseline.
-    It is NOT the final semantic mapping model.
+    V1 strategy:
+
+    1. Require a meaningful lexical overlap between the
+       lecture description and the topic name.
+    2. Use TF-IDF cosine similarity to rank candidates.
+    3. Discard weak similarity scores.
+    4. Return at most top_k matches.
+
+    This is intentionally conservative. A vague lecture
+    description should produce no match rather than
+    incorrectly completing several syllabus topics.
     """
 
     description = (
-        lecture_description
-        or ""
+        lecture_description or ""
     ).strip()
 
     if not description:
@@ -71,9 +171,45 @@ def map_lecture_to_syllabus(
     if not topics:
         return []
 
+    lecture_tokens = _normalize_tokens(
+        description
+    )
+
+    if not lecture_tokens:
+        return []
+
+    candidate_topics = []
+
+    for topic in topics:
+        topic_text = _build_topic_text(
+            topic
+        )
+
+        topic_tokens = _normalize_tokens(
+            topic_text
+        )
+
+        # Conservative lexical gate:
+        # at least one meaningful topic token must
+        # appear in the lecture description.
+        if not lecture_tokens.intersection(
+            topic_tokens
+        ):
+            continue
+
+        candidate_topics.append(
+            (
+                topic,
+                topic_text,
+            )
+        )
+
+    if not candidate_topics:
+        return []
+
     topic_texts = [
-        _build_topic_text(topic)
-        for topic in topics
+        topic_text
+        for _, topic_text in candidate_topics
     ]
 
     corpus = [
@@ -88,9 +224,12 @@ def map_lecture_to_syllabus(
         sublinear_tf=True,
     )
 
-    matrix = vectorizer.fit_transform(
-        corpus
-    )
+    try:
+        matrix = vectorizer.fit_transform(
+            corpus
+        )
+    except ValueError:
+        return []
 
     lecture_vector = matrix[0:1]
 
@@ -103,10 +242,12 @@ def map_lecture_to_syllabus(
 
     matches: list[TopicMatch] = []
 
-    for topic, score in zip(
-        topics,
+    for (topic, _), score in zip(
+        candidate_topics,
         similarities,
     ):
+        score = float(score)
+
         if score < min_score:
             continue
 
@@ -122,15 +263,17 @@ def map_lecture_to_syllabus(
                 topic_name=topic.name,
                 unit_name=unit_name,
                 score=round(
-                    float(score),
+                    score,
                     4,
                 ),
             )
         )
 
     matches.sort(
-        key=lambda item: item.score,
-        reverse=True,
+        key=lambda match: (
+            -match.score,
+            match.topic_name.lower(),
+        )
     )
 
     return matches[:top_k]
@@ -141,6 +284,7 @@ def map_and_format(
     course_id: str,
     lecture_description: str,
     top_k: int = 3,
+    min_score: float = DEFAULT_MIN_SCORE,
 ) -> dict:
     """
     API-friendly wrapper around the mapper.
@@ -151,11 +295,14 @@ def map_and_format(
         course_id=course_id,
         lecture_description=lecture_description,
         top_k=top_k,
+        min_score=min_score,
     )
 
     return {
         "course_id": course_id,
-        "lecture_description": lecture_description,
+        "lecture_description": (
+            lecture_description
+        ),
         "matches": [
             {
                 "topic_id": match.topic_id,

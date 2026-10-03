@@ -256,8 +256,20 @@ def predict_course_completion(
             },
         }
 
+    today = datetime.now().replace(
+        hour=0,
+        minute=0,
+        second=0,
+        microsecond=0,
+    )
+
+    forecast_start = max(
+        latest_date,
+        today,
+    )
+
     predicted_date = (
-        latest_date
+        forecast_start
         + timedelta(
             days=estimated_days
         )
@@ -271,7 +283,7 @@ def predict_course_completion(
     # pretending that a seven-lecture history gives
     # high forecasting certainty.
     lower_date = (
-        latest_date
+        forecast_start
         + timedelta(
             days=max(
                 1,
@@ -281,7 +293,7 @@ def predict_course_completion(
     )
 
     upper_date = (
-        latest_date
+        forecast_start
         + timedelta(
             days=estimated_days * 1.25
         )
@@ -344,6 +356,9 @@ def predict_course_completion(
                 latest_date.strftime(
                     "%Y-%m-%d"
                 )
+            ),
+            "forecast_start_date": (
+                forecast_start.strftime("%Y-%m-%d")
             ),
         },
     }

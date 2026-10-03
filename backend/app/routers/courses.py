@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 
 from app.database.db import get_db
 from app.models.academic import Course
+from app.services.academic_state import build_course_state
 from app.schemas.academic import (
     CourseSummary,
     CourseDetailResponse,
@@ -18,14 +19,21 @@ router = APIRouter(
 )
 
 
-def build_course_summary(course: Course) -> CourseSummary:
+def build_course_summary(
+    course: Course,
+    actual_progress: float,
+) -> CourseSummary:
+    """
+    Build a course summary using derived academic progress
+    instead of the cached Course.progress value.
+    """
     return CourseSummary(
         id=course.id,
         code=course.code,
         name=course.name,
         short_name=course.short_name,
         section=course.section,
-        progress=course.progress,
+        progress=actual_progress,
         planned_progress=course.planned_progress,
         current_pace=course.current_pace,
         required_pace=course.required_pace,
@@ -37,16 +45,58 @@ def build_course_summary(course: Course) -> CourseSummary:
     )
 
 
-@router.get("/", response_model=list[CourseSummary])
+def get_actual_progress(
+    db: Session,
+    course: Course,
+) -> float:
+    """
+    Get the authoritative derived progress from academic state.
+
+    academic_state.py calculates progress directly from the
+    number of completed syllabus topics, so this keeps API
+    responses consistent with the intelligence layer.
+    """
+    state = build_course_state(
+        db=db,
+        course_id=course.id,
+    )
+
+    if state.get("status") != "ok":
+        return 0.0
+
+    return float(
+        state.get("progress", {}).get(
+            "actual",
+            0.0,
+        )
+    )
+
+
+@router.get(
+    "/",
+    response_model=list[CourseSummary],
+)
 def get_courses(
     db: Session = Depends(get_db),
 ):
     courses = db.query(Course).all()
 
-    return [
-        build_course_summary(course)
-        for course in courses
-    ]
+    summaries = []
+
+    for course in courses:
+        actual_progress = get_actual_progress(
+            db=db,
+            course=course,
+        )
+
+        summaries.append(
+            build_course_summary(
+                course=course,
+                actual_progress=actual_progress,
+            )
+        )
+
+    return summaries
 
 
 @router.get(
@@ -68,6 +118,11 @@ def get_course(
             status_code=404,
             detail="Course not found",
         )
+
+    actual_progress = get_actual_progress(
+        db=db,
+        course=course,
+    )
 
     syllabus = []
 
@@ -101,8 +156,13 @@ def get_course(
         for lecture in course.lectures
     ]
 
+    course_summary = build_course_summary(
+        course=course,
+        actual_progress=actual_progress,
+    )
+
     return CourseDetailResponse(
-        **build_course_summary(course).model_dump(),
+        **course_summary.model_dump(),
         department="Computer Science & Engineering",
         syllabus=syllabus,
         lectures=lectures,
