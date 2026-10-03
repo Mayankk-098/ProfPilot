@@ -14,6 +14,10 @@ from app.services.ai_service import ai
 from app.services.action_executor import (
     execute_action,
 )
+from app.services.action_security import (
+    create_action_token,
+    verify_action_token,
+)
 from app.services.entity_resolver import (
     resolve_entities,
 )
@@ -59,6 +63,34 @@ def query_ai(
         resolved_entities
     )
 
+    # ----------------------------------------
+    # SIGN SERVER-GENERATED ACTION PROPOSALS
+    # ----------------------------------------
+    #
+    # Only fully formed proposals are signed.
+    # Clarification responses are not executable.
+    # ----------------------------------------
+
+    data = response.get(
+        "data"
+    )
+
+    if isinstance(data, dict):
+        action_plan = data.get(
+            "action_plan"
+        )
+
+        if (
+            isinstance(action_plan, dict)
+            and action_plan.get("status")
+            == "proposed"
+        ):
+            action_plan[
+                "proposal_token"
+            ] = create_action_token(
+                action_plan
+            )
+
     return response
 
 
@@ -68,8 +100,9 @@ def execute_ai_action(
     db: Session = Depends(get_db),
 ):
     """
-    Execute an AI action only after explicit
-    confirmation from the client.
+    Execute a previously generated action proposal
+    only after explicit confirmation and server-side
+    signature validation.
     """
 
     if not request.confirmed:
@@ -112,6 +145,26 @@ def execute_ai_action(
                 "confirmation."
             ),
         )
+
+    # ----------------------------------------
+    # VERIFY SERVER-SIGNED PROPOSAL
+    # ----------------------------------------
+
+    token_valid, token_message = (
+        verify_action_token(
+            action_plan
+        )
+    )
+
+    if not token_valid:
+        raise HTTPException(
+            status_code=403,
+            detail=token_message,
+        )
+
+    # ----------------------------------------
+    # EXECUTE
+    # ----------------------------------------
 
     result = execute_action(
         action_plan=action_plan,
