@@ -52,6 +52,9 @@ class CourseDetailResponse(CourseSummary):
 class AIQuery(BaseModel):
     message: str
     course_id: str | None = None
+class AIActionExecute(BaseModel):
+    confirmed: bool
+    action_plan: dict
 
 class ScheduleResponse(BaseModel):
     id: str

@@ -1,9 +1,17 @@
-from datetime import datetime, timedelta
 from app.services.action_planner import plan_action
 from sqlalchemy.orm import Session
 from app.services.entity_resolver import resolve_entities
 from app.services.context_engine import (
     build_academic_context,
+)
+from app.services.prediction_engine import (
+    predict_course_completion,
+)
+from app.services.what_if_engine import (
+    simulate_schedule_change,
+)
+from app.services.syllabus_drift_engine import (
+    detect_syllabus_drift,
 )
 from app.services.memory_relevance import (
     get_relevant_memories,
@@ -176,6 +184,34 @@ class ProfPilotAI:
                 for phrase in legacy_phrases
             )
 
+        def is_syllabus_drift_query() -> bool:
+            """Detect explicit syllabus-plan/drift questions.
+
+            The learned intent model remains the primary router.
+            This narrow secondary detector covers the new capability
+            before we have a separately trained intent label.
+            """
+            drift_phrases = (
+                "syllabus drift",
+                "drifting from",
+                "drift from",
+                "drift in",
+                "teaching plan",
+                "planned syllabus",
+                "off plan",
+                "off-plan",
+                "deviating from the plan",
+                "deviation from the plan",
+                "diverging from the plan",
+                "coverage issue",
+                "syllabus coverage issue",
+            )
+
+            return any(
+                phrase in message_lower
+                for phrase in drift_phrases
+            )
+
         # --------------------------------
         # BUILD REAL ACADEMIC CONTEXT
         # --------------------------------
@@ -256,8 +292,107 @@ class ProfPilotAI:
             memory_context = "No relevant academic memories found."
 
         # --------------------------------
+        # SYLLABUS DRIFT DETECTION
+        # --------------------------------
+
+        if is_syllabus_drift_query():
+            if not effective_course_id:
+                return {
+                    "type": "error",
+                    "answer": (
+                        "I couldn't determine which course "
+                        "you want me to analyse."
+                    ),
+                    "confidence": 0.95,
+                    "requires_confirmation": False,
+                }
+
+            drift_result = detect_syllabus_drift(
+                db=db,
+                course_id=effective_course_id,
+            )
+
+            if drift_result.get("status") != "ok":
+                return {
+                    "type": "syllabus_drift",
+                    "answer": (
+                        "I couldn't analyse syllabus drift "
+                        "from the current academic data."
+                    ),
+                    "data": drift_result,
+                    "confidence": 0.60,
+                    "requires_confirmation": False,
+                }
+
+            severity = drift_result["severity"]
+            summary = drift_result["summary"]
+            signals = drift_result["signals"]
+
+            if severity == "high_drift":
+                status_text = "shows substantial deviation from the current plan"
+            elif severity == "moderate_drift":
+                status_text = "shows a moderate deviation from the current plan"
+            elif severity == "mild_drift":
+                status_text = "shows a mild deviation from the current plan"
+            else:
+                status_text = "is broadly aligned with the current plan"
+
+            answer = (
+                f"{course['name']} {status_text}. "
+                f"Actual syllabus progress is "
+                f"{summary['actual_progress']:.2f}%, compared with "
+                f"{summary['planned_progress']:.2f}% planned "
+                f"({summary['progress_gap']:.2f} percentage points). "
+                f"There are {summary['remaining_topics']} syllabus topics "
+                f"remaining across {summary['lecture_count']} recorded lectures."
+            )
+
+            if summary["lecture_count"] > 0:
+                answer += (
+                    f" Recent teaching pace is "
+                    f"{summary['recent_pace']:.2f} new topics per lecture, "
+                    f"versus a required pace of "
+                    f"{summary['required_pace']:.2f}."
+                )
+
+            answer += (
+                f" Drift score: {drift_result['drift_score']:.2f}/100."
+            )
+
+            if signals:
+                answer += "\n\nEvidence:"
+                for signal in signals[:4]:
+                    if signal["type"] == "repeated_coverage":
+                        names = signal["evidence"].get(
+                            "repeated_topics",
+                            [],
+                        )
+                        answer += (
+                            "\n• Repeated coverage: "
+                            + ", ".join(names)
+                        )
+                    else:
+                        answer += (
+                            f"\n• {signal['description']}"
+                        )
+
+            answer += (
+                f"\n\nRecommendation: "
+                f"{drift_result['recommendation']}"
+            )
+
+            return {
+                "type": "syllabus_drift",
+                "answer": answer,
+                "data": drift_result,
+                "confidence": 0.85,
+                "requires_confirmation": False,
+            }
+
+        # --------------------------------
         # COURSE FINISH PREDICTION
         # --------------------------------
+
 
         if route_to(
             "query_course_completion",
@@ -265,51 +400,196 @@ class ProfPilotAI:
             "finish",
             "complete",
         ):
-            if not course:
+            if not effective_course_id:
                 return {
                     "type": "error",
                     "answer": (
-                        "I couldn't find a course "
-                        "to analyse."
+                        "I couldn't determine which "
+                        "course you want to analyse."
                     ),
+                    "confidence": 0.95,
+                    "requires_confirmation": False,
                 }
 
-            gap = (
-                course["planned_progress"]
-                - course["progress"]
+            prediction = (
+                predict_course_completion(
+                    db=db,
+                    course_id=effective_course_id,
+                )
             )
 
-            if gap > 0:
-                status = (
-                    f"{gap:.0f}% behind the "
-                    "planned pace"
+            if prediction.get(
+                "status"
+            ) == "insufficient_data":
+                return {
+                    "type": "prediction",
+                    "answer": (
+                        f"I don't have enough lecture "
+                        f"history to produce a reliable "
+                        f"completion forecast for "
+                        f"{course['short_name']} yet."
+                    ),
+                    "data": {
+                        "course": (
+                            course["short_name"]
+                        ),
+                        "prediction": None,
+                        "reason": (
+                            prediction.get(
+                                "evidence"
+                            )
+                        ),
+                    },
+                    "confidence": 0.50,
+                    "requires_confirmation": False,
+                }
+
+            if prediction.get(
+                "status"
+            ) == "complete":
+                predicted = prediction[
+                    "prediction"
+                ]
+
+                return {
+                    "type": "prediction",
+                    "answer": (
+                        f"{course['name']} has "
+                        f"no remaining syllabus topics."
+                    ),
+                    "data": {
+                        "course": (
+                            course["short_name"]
+                        ),
+                        "prediction": predicted,
+                    },
+                    "confidence": 0.99,
+                    "requires_confirmation": False,
+                }
+
+            predicted = prediction[
+                "prediction"
+            ]
+
+            evidence = prediction[
+                "evidence"
+            ]
+
+            predicted_date = predicted[
+                "predicted_completion"
+            ]
+
+            lower_bound = predicted[
+                "lower_bound"
+            ]
+
+            upper_bound = predicted[
+                "upper_bound"
+            ]
+
+            confidence = predicted[
+                "confidence"
+            ]
+
+            remaining = evidence[
+                "remaining_topics"
+            ]
+
+            working_pace = evidence[
+                "working_pace"
+            ]
+
+            interval_days = evidence[
+                "typical_lecture_interval_days"
+            ]
+
+            estimated_lectures = predicted[
+                "estimated_lectures_remaining"
+            ]
+
+            # Compare the newly derived forecast against
+            # the old stored/demo forecast.
+            stored_prediction = (
+                course.get(
+                    "predicted_completion"
                 )
-            else:
-                status = "on or ahead of schedule"
+            )
+
+            answer = (
+                f"Your {course['name']} has "
+                f"{remaining} syllabus topics remaining. "
+                f"Based on your recorded teaching history, "
+                f"I estimate about "
+                f"{estimated_lectures} more lectures are needed. "
+                f"Your current derived pace is "
+                f"{working_pace:.2f} new topics per lecture, "
+                f"with a typical lecture interval of "
+                f"{interval_days:.1f} days. "
+                f"The estimated completion date is "
+                f"{predicted_date}."
+            )
+
+            answer += (
+                f"\n\nForecast range: "
+                f"{lower_bound} to {upper_bound}."
+            )
+
+            answer += (
+                f"\nForecast confidence: "
+                f"{confidence}."
+            )
+
+            if stored_prediction:
+                answer += (
+                    f"\n\nStored course forecast: "
+                    f"{stored_prediction}"
+                )
 
             return {
                 "type": "prediction",
-                "answer": (
-                    f"Your {course['name']} is "
-                    f"currently {course['progress']:.0f}% "
-                    f"complete and is {status}. "
-                    f"At the current teaching pace, "
-                    f"the estimated completion date is "
-                    f"{course['predicted_completion']}."
-                ),
+                "answer": answer,
                 "data": {
-                    "course": course["short_name"],
-                    "progress": course["progress"],
-                    "planned_progress": course["planned_progress"],
-                    "current_pace": course["current_pace"],
-                    "required_pace": course["required_pace"],
+                    "course": (
+                        course["short_name"]
+                    ),
+                    "progress": (
+                        course["progress"]
+                    ),
+                    "planned_progress": (
+                        course["planned_progress"]
+                    ),
+                    "remaining_topics": remaining,
+                    "lecture_count": (
+                        evidence["lecture_count"]
+                    ),
+                    "overall_pace": (
+                        evidence["overall_pace"]
+                    ),
+                    "recent_pace": (
+                        evidence["recent_pace"]
+                    ),
+                    "working_pace": working_pace,
+                    "typical_lecture_interval_days": (
+                        interval_days
+                    ),
+                    "estimated_lectures_remaining": (
+                        estimated_lectures
+                    ),
                     "predicted_completion": (
-                        course["predicted_completion"]
+                        predicted_date
+                    ),
+                    "prediction_range": {
+                        "lower": lower_bound,
+                        "upper": upper_bound,
+                    },
+                    "confidence": confidence,
+                    "stored_prediction": (
+                        stored_prediction
                     ),
                 },
-                "confidence": 0.88,
+                "confidence": 0.80,
+                "requires_confirmation": False,
             }
-
         # --------------------------------
         # WHAT-IF SCHEDULE CHANGE
         # --------------------------------
@@ -318,91 +598,112 @@ class ProfPilotAI:
             "what_if_schedule_change",
             "what if",
         ):
-            if not course:
+            if not effective_course_id:
                 return {
                     "type": "error",
                     "answer": (
                         "I couldn't determine which "
                         "course you mean."
                     ),
+                    "confidence": 0.95,
+                    "requires_confirmation": False,
                 }
 
-            # --------------------------------
-            # TEMPORARY RULE-ASSISTED MODEL
-            # --------------------------------
-            #
-            # This is NOT our final prediction
-            # model.
-            #
-            # The real ML forecasting model will
-            # replace this later.
-            # --------------------------------
+            what_if = simulate_schedule_change(
+                db=db,
+                course_id=effective_course_id,
+                message=message,
+            )
 
-            if (
-                course["current_pace"]
-                < course["required_pace"]
-            ):
-                delay_days = 3
+            if what_if.get("status") == "insufficient_data":
+                return {
+                    "type": "what_if",
+                    "answer": (
+                        f"I don't have enough teaching history "
+                        f"to simulate a schedule change for "
+                        f"{course['short_name']} reliably yet."
+                    ),
+                    "data": what_if,
+                    "confidence": 0.50,
+                    "requires_confirmation": False,
+                }
+
+            if what_if.get("status") == "complete":
+                return {
+                    "type": "what_if",
+                    "answer": (
+                        f"{course['name']} has no remaining "
+                        f"syllabus topics, so there is no "
+                        f"completion date left to simulate."
+                    ),
+                    "data": what_if,
+                    "confidence": 0.99,
+                    "requires_confirmation": False,
+                }
+
+            if what_if.get("status") != "ok":
+                return {
+                    "type": "what_if",
+                    "answer": (
+                        "I understood the what-if scenario, "
+                        "but I couldn't simulate it from the "
+                        "current academic data."
+                    ),
+                    "data": what_if,
+                    "confidence": 0.60,
+                    "requires_confirmation": False,
+                }
+
+            scenario_label = what_if["scenario_label"]
+            baseline = what_if["baseline"]
+            simulation = what_if["simulation"]
+            evidence = what_if["evidence"]
+
+            change_days = simulation["change_days"]
+            abs_change = abs(change_days)
+
+            if change_days > 0:
+                impact_text = (
+                    f"about {abs_change:.0f} day"
+                    f"{'s' if abs_change != 1 else ''} later"
+                )
+            elif change_days < 0:
+                impact_text = (
+                    f"about {abs_change:.0f} day"
+                    f"{'s' if abs_change != 1 else ''} earlier"
+                )
             else:
-                delay_days = 1
+                impact_text = "no change"
 
-            current_date = datetime.strptime(
-                course["predicted_completion"],
-                "%d %B %Y",
+            answer = (
+                f"If you {scenario_label} for "
+                f"{course['short_name']}, the derived completion "
+                f"forecast moves from "
+                f"{baseline['predicted_completion']} to "
+                f"{simulation['predicted_completion']} "
+                f"({impact_text})."
+                f" You would have "
+                f"{simulation['estimated_lectures_remaining']} "
+                f"estimated lectures remaining instead of "
+                f"{baseline['estimated_lectures_remaining']}."
             )
 
-            new_date = (
-                current_date
-                + timedelta(days=delay_days)
+            answer += (
+                f" This simulation uses a working pace of "
+                f"{evidence['working_pace']:.2f} new topics per "
+                f"lecture and a typical lecture interval of "
+                f"{evidence['typical_lecture_interval_days']:.1f} days."
             )
-
-            scenario = "cancel the next"
-
-            if (
-                "extra" in message_lower
-                or "additional" in message_lower
-                or "add one more" in message_lower
-            ):
-                scenario = "add an extra"
-
-            elif (
-                "miss" in message_lower
-                or "skip" in message_lower
-                or "postpone" in message_lower
-            ):
-                scenario = "miss or postpone the next"
 
             return {
                 "type": "what_if",
-                "answer": (
-                    f"If you {scenario} "
-                    f"{course['short_name']} class, "
-                    f"the current demo model estimates "
-                    f"a schedule impact of approximately "
-                    f"{delay_days} days. "
-                    f"The predicted completion would "
-                    f"shift from "
-                    f"{course['predicted_completion']} "
-                    f"to "
-                    f"{new_date.day} "
-                    f"{new_date.strftime('%B %Y')}. "
-                    "This is a prototype simulation and "
-                    "will later be replaced by the real "
-                    "prediction model."
-                ),
+                "answer": answer,
                 "data": {
                     "course": course["short_name"],
-                    "original_completion": (
-                        course["predicted_completion"]
-                    ),
-                    "simulated_completion": (
-                        f"{new_date.day} "
-                        f"{new_date.strftime('%B %Y')}"
-                    ),
-                    "delay_days": delay_days,
+                    **what_if,
                 },
-                "confidence": 0.81,
-                "requires_confirmation": True,
+                "confidence": 0.80,
+                "requires_confirmation": False,
             }
 
         # --------------------------------
