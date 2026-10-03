@@ -16,6 +16,10 @@ from app.services.syllabus_drift_engine import (
 from app.services.memory_relevance import (
     get_relevant_memories,
 )
+from app.services.intelligence_engine import (
+    build_course_intelligence,
+)
+
 
 def build_action_message(
     action_plan: dict,
@@ -102,25 +106,18 @@ def build_action_message(
             )
 
             for match in matches:
-                # Support the mapper's current output keys.
                 topic_name = (
                     match.get("topic_name")
                     or match.get("topic")
                     or match.get("name")
                     or "Unknown topic"
                 )
-
                 unit_name = (
                     match.get("unit_name")
                     or match.get("unit")
                     or "Unknown unit"
                 )
-
-                score = match.get(
-                    "score",
-                    0.0
-                )
-
+                score = match.get("score", 0.0)
                 answer += (
                     f"• {topic_name} "
                     f"(Unit: {unit_name}, "
@@ -133,7 +130,6 @@ def build_action_message(
                 "I couldn't confidently match "
                 "this lecture to the current syllabus."
             )
-
         elif proposal.get("mapping_status") == "error":
             answer += (
                 ".\n\n"
@@ -142,13 +138,13 @@ def build_action_message(
             )
 
         answer += "\nWould you like me to proceed?"
-
         return answer
 
     return (
         "I understood the requested action, "
         "but I need more information before proceeding."
     )
+
 
 class ProfPilotAI:
 
@@ -162,35 +158,19 @@ class ProfPilotAI:
     ) -> dict:
 
         message_lower = message.lower()
-
-        # The learned NLP pipeline is the primary router.
-        # If nlp_analysis is not supplied, the legacy keyword
-        # routing below remains available as a fallback.
         intent = None
         if nlp_analysis:
             intent = nlp_analysis.get("intent")
 
         def route_to(expected_intent: str, *legacy_phrases: str) -> bool:
-            """
-            Use the learned intent when available.
-            Fall back to legacy keyword matching only when
-            the AI service is called without NLP analysis.
-            """
             if intent is not None:
                 return intent == expected_intent
-
             return any(
                 phrase in message_lower
                 for phrase in legacy_phrases
             )
 
         def is_syllabus_drift_query() -> bool:
-            """Detect explicit syllabus-plan/drift questions.
-
-            The learned intent model remains the primary router.
-            This narrow secondary detector covers the new capability
-            before we have a separately trained intent label.
-            """
             drift_phrases = (
                 "syllabus drift",
                 "drifting from",
@@ -206,15 +186,11 @@ class ProfPilotAI:
                 "coverage issue",
                 "syllabus coverage issue",
             )
-
             return any(
                 phrase in message_lower
                 for phrase in drift_phrases
             )
 
-        # --------------------------------
-        # BUILD REAL ACADEMIC CONTEXT
-        # --------------------------------
         resolved_entities = resolve_entities(
             db=db,
             nlp_analysis=nlp_analysis,
@@ -230,10 +206,7 @@ class ProfPilotAI:
 
         if action_plan is not None:
             if action_plan["status"] == "needs_clarification":
-                missing_text = ", ".join(
-                    action_plan["missing"]
-                )
-
+                missing_text = ", ".join(action_plan["missing"])
                 return {
                     "type": "action_clarification",
                     "answer": (
@@ -252,9 +225,7 @@ class ProfPilotAI:
 
             return {
                 "type": "action_proposal",
-                "answer": build_action_message(
-                    action_plan
-                ),
+                "answer": build_action_message(action_plan),
                 "data": {
                     "action_plan": action_plan,
                     "resolved_entities": resolved_entities,
@@ -268,7 +239,6 @@ class ProfPilotAI:
             lecturer_id=lecturer_id,
             course_id=effective_course_id,
         )
-
         course = context["selected_course"]
 
         memories = get_relevant_memories(
@@ -280,29 +250,19 @@ class ProfPilotAI:
         )
 
         memory_lines = []
-
         for memory in memories:
             memory_lines.append(
                 f"- {memory.title}: {memory.summary}"
             )
-
         memory_context = "\n".join(memory_lines)
-
         if not memory_context:
             memory_context = "No relevant academic memories found."
-
-        # --------------------------------
-        # SYLLABUS DRIFT DETECTION
-        # --------------------------------
 
         if is_syllabus_drift_query():
             if not effective_course_id:
                 return {
                     "type": "error",
-                    "answer": (
-                        "I couldn't determine which course "
-                        "you want me to analyse."
-                    ),
+                    "answer": "I couldn't determine which course you want me to analyse.",
                     "confidence": 0.95,
                     "requires_confirmation": False,
                 }
@@ -315,10 +275,7 @@ class ProfPilotAI:
             if drift_result.get("status") != "ok":
                 return {
                     "type": "syllabus_drift",
-                    "answer": (
-                        "I couldn't analyse syllabus drift "
-                        "from the current academic data."
-                    ),
+                    "answer": "I couldn't analyse syllabus drift from the current academic data.",
                     "data": drift_result,
                     "confidence": 0.60,
                     "requires_confirmation": False,
@@ -339,47 +296,30 @@ class ProfPilotAI:
 
             answer = (
                 f"{course['name']} {status_text}. "
-                f"Actual syllabus progress is "
-                f"{summary['actual_progress']:.2f}%, compared with "
-                f"{summary['planned_progress']:.2f}% planned "
-                f"({summary['progress_gap']:.2f} percentage points). "
-                f"There are {summary['remaining_topics']} syllabus topics "
-                f"remaining across {summary['lecture_count']} recorded lectures."
+                f"Actual syllabus progress is {summary['actual_progress']:.2f}%, compared with "
+                f"{summary['planned_progress']:.2f}% planned ({summary['progress_gap']:.2f} percentage points). "
+                f"There are {summary['remaining_topics']} syllabus topics remaining across "
+                f"{summary['lecture_count']} recorded lectures."
             )
 
             if summary["lecture_count"] > 0:
                 answer += (
-                    f" Recent teaching pace is "
-                    f"{summary['recent_pace']:.2f} new topics per lecture, "
-                    f"versus a required pace of "
-                    f"{summary['required_pace']:.2f}."
+                    f" Recent teaching pace is {summary['recent_pace']:.2f} new topics per lecture, "
+                    f"versus a required pace of {summary['required_pace']:.2f}."
                 )
 
-            answer += (
-                f" Drift score: {drift_result['drift_score']:.2f}/100."
-            )
+            answer += f" Drift score: {drift_result['drift_score']:.2f}/100."
 
             if signals:
                 answer += "\n\nEvidence:"
                 for signal in signals[:4]:
                     if signal["type"] == "repeated_coverage":
-                        names = signal["evidence"].get(
-                            "repeated_topics",
-                            [],
-                        )
-                        answer += (
-                            "\n• Repeated coverage: "
-                            + ", ".join(names)
-                        )
+                        names = signal["evidence"].get("repeated_topics", [])
+                        answer += "\n• Repeated coverage: " + ", ".join(names)
                     else:
-                        answer += (
-                            f"\n• {signal['description']}"
-                        )
+                        answer += f"\n• {signal['description']}"
 
-            answer += (
-                f"\n\nRecommendation: "
-                f"{drift_result['recommendation']}"
-            )
+            answer += f"\n\nRecommendation: {drift_result['recommendation']}"
 
             return {
                 "type": "syllabus_drift",
@@ -389,222 +329,100 @@ class ProfPilotAI:
                 "requires_confirmation": False,
             }
 
-        # --------------------------------
-        # COURSE FINISH PREDICTION
-        # --------------------------------
-
-
-        if route_to(
-            "query_course_completion",
-            "when",
-            "finish",
-            "complete",
-        ):
+        if route_to("query_course_completion", "when", "finish", "complete"):
             if not effective_course_id:
                 return {
                     "type": "error",
-                    "answer": (
-                        "I couldn't determine which "
-                        "course you want to analyse."
-                    ),
+                    "answer": "I couldn't determine which course you want to analyse.",
                     "confidence": 0.95,
                     "requires_confirmation": False,
                 }
 
-            prediction = (
-                predict_course_completion(
-                    db=db,
-                    course_id=effective_course_id,
-                )
+            prediction = predict_course_completion(
+                db=db,
+                course_id=effective_course_id,
             )
 
-            if prediction.get(
-                "status"
-            ) == "insufficient_data":
+            if prediction.get("status") == "insufficient_data":
                 return {
                     "type": "prediction",
                     "answer": (
-                        f"I don't have enough lecture "
-                        f"history to produce a reliable "
-                        f"completion forecast for "
-                        f"{course['short_name']} yet."
+                        f"I don't have enough lecture history to produce a reliable completion forecast "
+                        f"for {course['short_name']} yet."
                     ),
                     "data": {
-                        "course": (
-                            course["short_name"]
-                        ),
+                        "course": course["short_name"],
                         "prediction": None,
-                        "reason": (
-                            prediction.get(
-                                "evidence"
-                            )
-                        ),
+                        "reason": prediction.get("evidence"),
                     },
                     "confidence": 0.50,
                     "requires_confirmation": False,
                 }
 
-            if prediction.get(
-                "status"
-            ) == "complete":
-                predicted = prediction[
-                    "prediction"
-                ]
-
+            if prediction.get("status") == "complete":
+                predicted = prediction["prediction"]
                 return {
                     "type": "prediction",
-                    "answer": (
-                        f"{course['name']} has "
-                        f"no remaining syllabus topics."
-                    ),
+                    "answer": f"{course['name']} has no remaining syllabus topics.",
                     "data": {
-                        "course": (
-                            course["short_name"]
-                        ),
+                        "course": course["short_name"],
                         "prediction": predicted,
                     },
                     "confidence": 0.99,
                     "requires_confirmation": False,
                 }
 
-            predicted = prediction[
-                "prediction"
-            ]
-
-            evidence = prediction[
-                "evidence"
-            ]
-
-            predicted_date = predicted[
-                "predicted_completion"
-            ]
-
-            lower_bound = predicted[
-                "lower_bound"
-            ]
-
-            upper_bound = predicted[
-                "upper_bound"
-            ]
-
-            confidence = predicted[
-                "confidence"
-            ]
-
-            remaining = evidence[
-                "remaining_topics"
-            ]
-
-            working_pace = evidence[
-                "working_pace"
-            ]
-
-            interval_days = evidence[
-                "typical_lecture_interval_days"
-            ]
-
-            estimated_lectures = predicted[
-                "estimated_lectures_remaining"
-            ]
-
-            # Compare the newly derived forecast against
-            # the old stored/demo forecast.
-            stored_prediction = (
-                course.get(
-                    "predicted_completion"
-                )
-            )
+            predicted = prediction["prediction"]
+            evidence = prediction["evidence"]
+            predicted_date = predicted["predicted_completion"]
+            lower_bound = predicted["lower_bound"]
+            upper_bound = predicted["upper_bound"]
+            confidence = predicted["confidence"]
+            remaining = evidence["remaining_topics"]
+            working_pace = evidence["working_pace"]
+            interval_days = evidence["typical_lecture_interval_days"]
+            estimated_lectures = predicted["estimated_lectures_remaining"]
+            stored_prediction = course.get("predicted_completion")
 
             answer = (
-                f"Your {course['name']} has "
-                f"{remaining} syllabus topics remaining. "
-                f"Based on your recorded teaching history, "
-                f"I estimate about "
-                f"{estimated_lectures} more lectures are needed. "
-                f"Your current derived pace is "
-                f"{working_pace:.2f} new topics per lecture, "
-                f"with a typical lecture interval of "
-                f"{interval_days:.1f} days. "
-                f"The estimated completion date is "
-                f"{predicted_date}."
+                f"Your {course['name']} has {remaining} syllabus topics remaining. "
+                f"Based on your recorded teaching history, I estimate about {estimated_lectures} more lectures are needed. "
+                f"Your current derived pace is {working_pace:.2f} new topics per lecture, with a typical lecture interval of "
+                f"{interval_days:.1f} days. The estimated completion date is {predicted_date}."
             )
-
-            answer += (
-                f"\n\nForecast range: "
-                f"{lower_bound} to {upper_bound}."
-            )
-
-            answer += (
-                f"\nForecast confidence: "
-                f"{confidence}."
-            )
-
+            answer += f"\n\nForecast range: {lower_bound} to {upper_bound}."
+            answer += f"\nForecast confidence: {confidence}."
             if stored_prediction:
-                answer += (
-                    f"\n\nStored course forecast: "
-                    f"{stored_prediction}"
-                )
+                answer += f"\n\nStored course forecast: {stored_prediction}"
 
             return {
                 "type": "prediction",
                 "answer": answer,
                 "data": {
-                    "course": (
-                        course["short_name"]
-                    ),
-                    "progress": (
-                        course["progress"]
-                    ),
-                    "planned_progress": (
-                        course["planned_progress"]
-                    ),
+                    "course": course["short_name"],
+                    "progress": course["progress"],
+                    "planned_progress": course["planned_progress"],
                     "remaining_topics": remaining,
-                    "lecture_count": (
-                        evidence["lecture_count"]
-                    ),
-                    "overall_pace": (
-                        evidence["overall_pace"]
-                    ),
-                    "recent_pace": (
-                        evidence["recent_pace"]
-                    ),
+                    "lecture_count": evidence["lecture_count"],
+                    "overall_pace": evidence["overall_pace"],
+                    "recent_pace": evidence["recent_pace"],
                     "working_pace": working_pace,
-                    "typical_lecture_interval_days": (
-                        interval_days
-                    ),
-                    "estimated_lectures_remaining": (
-                        estimated_lectures
-                    ),
-                    "predicted_completion": (
-                        predicted_date
-                    ),
-                    "prediction_range": {
-                        "lower": lower_bound,
-                        "upper": upper_bound,
-                    },
+                    "typical_lecture_interval_days": interval_days,
+                    "estimated_lectures_remaining": estimated_lectures,
+                    "predicted_completion": predicted_date,
+                    "prediction_range": {"lower": lower_bound, "upper": upper_bound},
                     "confidence": confidence,
-                    "stored_prediction": (
-                        stored_prediction
-                    ),
+                    "stored_prediction": stored_prediction,
                 },
                 "confidence": 0.80,
                 "requires_confirmation": False,
             }
-        # --------------------------------
-        # WHAT-IF SCHEDULE CHANGE
-        # --------------------------------
 
-        if route_to(
-            "what_if_schedule_change",
-            "what if",
-        ):
+        if route_to("what_if_schedule_change", "what if"):
             if not effective_course_id:
                 return {
                     "type": "error",
-                    "answer": (
-                        "I couldn't determine which "
-                        "course you mean."
-                    ),
+                    "answer": "I couldn't determine which course you mean.",
                     "confidence": 0.95,
                     "requires_confirmation": False,
                 }
@@ -618,11 +436,7 @@ class ProfPilotAI:
             if what_if.get("status") == "insufficient_data":
                 return {
                     "type": "what_if",
-                    "answer": (
-                        f"I don't have enough teaching history "
-                        f"to simulate a schedule change for "
-                        f"{course['short_name']} reliably yet."
-                    ),
+                    "answer": f"I don't have enough teaching history to simulate a schedule change for {course['short_name']} reliably yet.",
                     "data": what_if,
                     "confidence": 0.50,
                     "requires_confirmation": False,
@@ -631,11 +445,7 @@ class ProfPilotAI:
             if what_if.get("status") == "complete":
                 return {
                     "type": "what_if",
-                    "answer": (
-                        f"{course['name']} has no remaining "
-                        f"syllabus topics, so there is no "
-                        f"completion date left to simulate."
-                    ),
+                    "answer": f"{course['name']} has no remaining syllabus topics, so there is no completion date left to simulate.",
                     "data": what_if,
                     "confidence": 0.99,
                     "requires_confirmation": False,
@@ -644,11 +454,7 @@ class ProfPilotAI:
             if what_if.get("status") != "ok":
                 return {
                     "type": "what_if",
-                    "answer": (
-                        "I understood the what-if scenario, "
-                        "but I couldn't simulate it from the "
-                        "current academic data."
-                    ),
+                    "answer": "I understood the what-if scenario, but I couldn't simulate it from the current academic data.",
                     "data": what_if,
                     "confidence": 0.60,
                     "requires_confirmation": False,
@@ -658,220 +464,157 @@ class ProfPilotAI:
             baseline = what_if["baseline"]
             simulation = what_if["simulation"]
             evidence = what_if["evidence"]
-
             change_days = simulation["change_days"]
             abs_change = abs(change_days)
 
             if change_days > 0:
-                impact_text = (
-                    f"about {abs_change:.0f} day"
-                    f"{'s' if abs_change != 1 else ''} later"
-                )
+                impact_text = f"about {abs_change:.0f} day{'s' if abs_change != 1 else ''} later"
             elif change_days < 0:
-                impact_text = (
-                    f"about {abs_change:.0f} day"
-                    f"{'s' if abs_change != 1 else ''} earlier"
-                )
+                impact_text = f"about {abs_change:.0f} day{'s' if abs_change != 1 else ''} earlier"
             else:
                 impact_text = "no change"
 
             answer = (
-                f"If you {scenario_label} for "
-                f"{course['short_name']}, the derived completion "
-                f"forecast moves from "
-                f"{baseline['predicted_completion']} to "
-                f"{simulation['predicted_completion']} "
-                f"({impact_text})."
-                f" You would have "
-                f"{simulation['estimated_lectures_remaining']} "
-                f"estimated lectures remaining instead of "
+                f"If you {scenario_label} for {course['short_name']}, the derived completion forecast moves from "
+                f"{baseline['predicted_completion']} to {simulation['predicted_completion']} ({impact_text}). "
+                f"You would have {simulation['estimated_lectures_remaining']} estimated lectures remaining instead of "
                 f"{baseline['estimated_lectures_remaining']}."
             )
-
             answer += (
-                f" This simulation uses a working pace of "
-                f"{evidence['working_pace']:.2f} new topics per "
-                f"lecture and a typical lecture interval of "
-                f"{evidence['typical_lecture_interval_days']:.1f} days."
+                f" This simulation uses a working pace of {evidence['working_pace']:.2f} new topics per lecture "
+                f"and a typical lecture interval of {evidence['typical_lecture_interval_days']:.1f} days."
             )
 
             return {
                 "type": "what_if",
                 "answer": answer,
-                "data": {
-                    "course": course["short_name"],
-                    **what_if,
-                },
+                "data": {"course": course["short_name"], **what_if},
                 "confidence": 0.80,
                 "requires_confirmation": False,
             }
 
-        # --------------------------------
-        # NEXT CLASS
-        # --------------------------------
-
-        if route_to(
-            "query_next_class",
-            "next class",
-            "next lecture",
-        ):
+        if route_to("query_next_class", "next class", "next lecture"):
             next_class = context["next_class"]
-
             if not next_class:
                 return {
                     "type": "schedule",
-                    "answer": (
-                        "You have no classes "
-                        "scheduled."
-                    ),
+                    "answer": "You have no classes scheduled.",
                     "confidence": 0.98,
                 }
-
             return {
                 "type": "schedule",
                 "answer": (
-                    f"Your next class is "
-                    f"{next_class['subject']} "
-                    f"for {next_class['batch']} "
-                    f"at {next_class['time']} "
-                    f"{next_class['period']} "
-                    f"in {next_class['room']}."
+                    f"Your next class is {next_class['subject']} for {next_class['batch']} "
+                    f"at {next_class['time']} {next_class['period']} in {next_class['room']}."
                 ),
                 "data": next_class,
                 "confidence": 0.98,
             }
 
-        # --------------------------------
-        # WHAT DID I TEACH?
-        # --------------------------------
-
-        if route_to(
-            "query_last_lecture",
-            "what did i teach",
-            "last lecture",
-            "previous lecture",
-        ):
+        if route_to("query_last_lecture", "what did i teach", "last lecture", "previous lecture"):
             lectures = context["recent_lectures"]
-
             if not lectures:
                 return {
                     "type": "lecture_history",
-                    "answer": (
-                        "I don't have any lecture "
-                        "history for this course yet."
-                    ),
+                    "answer": "I don't have any lecture history for this course yet.",
                     "confidence": 0.96,
                 }
-
             latest = lectures[0]
-
             return {
                 "type": "lecture_history",
-                "answer": (
-                    f"Your latest recorded lecture "
-                    f"was on {latest['date']}. "
-                    f"You taught: "
-                    f"{latest['description']}"
-                ),
+                "answer": f"Your latest recorded lecture was on {latest['date']}. You taught: {latest['description']}",
                 "data": latest,
                 "confidence": 0.97,
             }
 
-        # --------------------------------
-        # COURSE STATUS
-        # --------------------------------
-
-        if route_to(
-            "query_course_status",
-            "how am i doing",
-            "course status",
-            "course progress",
-            "syllabus progress",
-        ):
-            if not course:
+        if route_to("query_course_status", "how am i doing", "course status", "course progress", "syllabus progress"):
+            if not effective_course_id:
                 return {
                     "type": "error",
-                    "answer": (
-                        "I couldn't determine the "
-                        "course you want to analyse."
-                    ),
+                    "answer": "I couldn't determine the course you want to analyse.",
+                    "confidence": 0.95,
+                    "requires_confirmation": False,
                 }
+
+            intelligence = build_course_intelligence(
+                db=db,
+                course_id=effective_course_id,
+            )
+
+            if intelligence.get("status") != "ok":
+                return {
+                    "type": "course_status",
+                    "answer": "I couldn't build a reliable academic overview from the current course data.",
+                    "data": intelligence,
+                    "confidence": 0.60,
+                    "requires_confirmation": False,
+                }
+
+            summary = intelligence["summary"]
+            recommendation = intelligence["recommendation"]
+            status_text = {
+                "behind": "behind the current plan",
+                "ahead": "ahead of the current plan",
+                "on_track": "close to the current plan",
+            }.get(summary["status"], "on the current plan")
+
+            answer = (
+                f"{course['name']} is {summary['actual_progress']:.2f}% complete versus "
+                f"{summary['planned_progress']:.2f}% planned, so it is {status_text} "
+                f"by {abs(summary['progress_gap']):.2f} percentage points. "
+                f"There are {summary['remaining_topics']} syllabus topics remaining. "
+                f"Recent teaching pace is {summary['recent_pace']:.2f} new topics per lecture, "
+                f"with {summary['required_pace']:.2f} required."
+            )
+
+            if summary.get("predicted_completion"):
+                answer += f" The derived completion forecast is {summary['predicted_completion']}"
+                if summary.get("forecast_confidence"):
+                    answer += f" ({summary['forecast_confidence']} confidence)."
+                else:
+                    answer += "."
+
+            if summary.get("drift_severity"):
+                answer += f" Syllabus alignment is currently classified as {summary['drift_severity'].replace('_', ' ')}."
+
+            answer += f"\n\nNext focus: {recommendation['message']}"
+            if recommendation.get("topics"):
+                answer += " " + ", ".join(topic["name"] for topic in recommendation["topics"])
+                answer += "."
 
             return {
                 "type": "course_status",
-                "answer": (
-                    f"{course['name']} is "
-                    f"{course['progress']:.0f}% complete. "
-                    f"The planned progress is "
-                    f"{course['planned_progress']:.0f}%. "
-                    f"Your current pace is "
-                    f"{course['current_pace']:.2f} "
-                    f"topics per class, compared with "
-                    f"a required pace of "
-                    f"{course['required_pace']:.2f}."
-                ),
-                "data": course,
-                "confidence": 0.95,
+                "answer": answer,
+                "data": intelligence,
+                "confidence": 0.90,
+                "requires_confirmation": False,
             }
 
-        # --------------------------------
-        # EXPLAIN DELAY
-        # --------------------------------
-
-        if route_to(
-            "explain_delay",
-            "why am i behind",
-            "why behind",
-        ):
+        if route_to("explain_delay", "why am i behind", "why behind"):
             if not course:
                 return {
                     "type": "error",
-                    "answer": (
-                        "I couldn't determine the "
-                        "course you want to analyse."
-                    ),
+                    "answer": "I couldn't determine the course you want to analyse.",
                 }
 
             progress = course["progress"]
             planned_progress = course["planned_progress"]
-            gap = round(
-                planned_progress - progress,
-                1,
-            )
+            gap = round(planned_progress - progress, 1)
 
             if gap > 0:
                 answer = (
-                    f"Your {course['short_name']} course "
-                    f"is currently {gap}% behind the "
-                    "planned syllabus progress. "
-                    f"Current progress is {progress}% "
-                    f"while planned progress is "
-                    f"{planned_progress}%."
+                    f"Your {course['short_name']} course is currently {gap}% behind the planned syllabus progress. "
+                    f"Current progress is {progress}% while planned progress is {planned_progress}%."
                 )
             elif gap < 0:
-                answer = (
-                    f"Your {course['short_name']} course "
-                    f"is currently {abs(gap)}% ahead of "
-                    "the planned syllabus progress."
-                )
+                answer = f"Your {course['short_name']} course is currently {abs(gap)}% ahead of the planned syllabus progress."
             else:
-                answer = (
-                    f"Your {course['short_name']} course "
-                    "is currently exactly on the planned "
-                    "syllabus progress."
-                )
+                answer = f"Your {course['short_name']} course is currently exactly on the planned syllabus progress."
 
             if memories:
-                answer += (
-                    "\n\nRecent academic events that "
-                    "may be relevant:\n"
-                )
-
+                answer += "\n\nRecent academic events that may be relevant:\n"
                 for memory in memories[:5]:
-                    answer += (
-                        f"• {memory.title} — "
-                        f"{memory.summary}\n"
-                    )
+                    answer += f"• {memory.title} — {memory.summary}\n"
 
             return {
                 "type": "delay_explanation",
@@ -881,47 +624,23 @@ class ProfPilotAI:
                     "progress": progress,
                     "planned_progress": planned_progress,
                     "gap": gap,
-                    "memories_used": [
-                        memory.title
-                        for memory in memories[:5]
-                    ],
+                    "memories_used": [memory.title for memory in memories[:5]],
                 },
                 "confidence": 0.92,
                 "requires_confirmation": False,
             }
 
-        # --------------------------------
-        # QUERY MEMORY EVENTS
-        # --------------------------------
-
-        if route_to(
-            "query_memory_events",
-            "what happened recently",
-            "recent events",
-            "what happened in dbms",
-        ):
+        if route_to("query_memory_events", "what happened recently", "recent events", "what happened in dbms"):
             if memories:
-                answer = (
-                    "Here are the relevant academic "
-                    "events I remember:\n\n"
-                )
-
+                answer = "Here are the relevant academic events I remember:\n\n"
                 for memory in memories[:5]:
-                    answer += (
-                        f"• {memory.title}\n"
-                        f"  {memory.summary}\n"
-                    )
-
+                    answer += f"• {memory.title}\n  {memory.summary}\n"
                 return {
                     "type": "memory",
                     "answer": answer,
                     "data": {
                         "memories": [
-                            {
-                                "title": memory.title,
-                                "summary": memory.summary,
-                                "event_type": memory.event_type,
-                            }
+                            {"title": memory.title, "summary": memory.summary, "event_type": memory.event_type}
                             for memory in memories[:5]
                         ]
                     },
@@ -931,30 +650,18 @@ class ProfPilotAI:
 
             return {
                 "type": "memory",
-                "answer": (
-                    "I don't have any recorded academic "
-                    "events relevant to this query yet."
-                ),
+                "answer": "I don't have any recorded academic events relevant to this query yet.",
                 "confidence": 0.95,
                 "requires_confirmation": False,
             }
 
-        # --------------------------------
-        # GENERAL CONTEXT RESPONSE
-        # --------------------------------
-
         lecturer = context["lecturer"]
-
         return {
             "type": "general",
             "answer": (
-                f"I'm currently working with "
-                f"{lecturer['name']}'s academic context. "
-                f"You have "
-                f"{context['summary']['total_courses']} "
-                f"active courses, with "
-                f"{context['summary']['courses_behind']} "
-                f"currently behind their planned pace."
+                f"I'm currently working with {lecturer['name']}'s academic context. "
+                f"You have {context['summary']['total_courses']} active courses, with "
+                f"{context['summary']['courses_behind']} currently behind their planned pace."
             ),
             "data": {
                 "context_summary": context["summary"],
