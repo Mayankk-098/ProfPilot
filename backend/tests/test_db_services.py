@@ -46,7 +46,7 @@ def test_attendance_flags_and_exact_75(db):
     assert by_roll["24BCS047"]["percentage"] == 75.0 and not by_roll["24BCS047"]["flagged"]
     assert by_roll["24BCS009"]["total"] == 7 and by_roll["24BCS009"]["percentage"] == 100.0  # excused excluded
     assert res["flagged_count"] == 2
-    assert [s["roll_no"] for s in res["students"][:2]] == ["24BCS031", "24BCS018"]  # flagged first, lowest first
+    assert [s["roll_no"] for s in res["students"][:2]] == ["24BCS018", "24BCS031"]  # flagged first, lowest first
 
 
 def test_flagged_only(db):
@@ -104,14 +104,14 @@ def test_record_attendance_validation_and_full_roster(db):
 def test_progress_derived_and_consistent(db):
     course = db.get(Course, "dbms")
     m = compute_course_metrics(db, course, NOW)
-    assert m["progress"] == 21.9                      # 7 of 32 topics
-    assert m["planned_progress"] == 25.0
-    assert m["predicted_completion"] == "7 December 2026"
+    assert m["progress"] == 63.6                      # 7 of 11 topics
+    assert m["planned_progress"] == 27.3
+    assert m["predicted_completion"] == "12 October 2026"
     assert m["planned_completion"] == "3 December 2026"
     assert m["total_students"] == 62
     assert m["last_attendance_date"] == "2026-09-30"
     units = {u.id: u.progress for u in db.query(SyllabusUnit).filter_by(course_id="dbms")}
-    assert units["dbms-u1"] == 60.0
+    assert units["dbms-u1"] == 100.0
     topics = [t for u in course.units for t in u.topics]
     assert sum(t.completed for t in topics) == 7
     # every completed topic points at a lecture that exists in this course

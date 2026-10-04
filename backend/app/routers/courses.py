@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from app.database.db import get_db
 from app.models.academic import Course
 from app.services.academic_state import build_course_state
+from app.services.auth_service import get_current_user
 from app.schemas.academic import (
     CourseSummary,
     CourseDetailResponse,
@@ -25,7 +26,7 @@ def build_course_summary(
 ) -> CourseSummary:
     """
     Build a course summary using derived academic progress
-    instead of the cached Course.progress value.
+    instead of a cached Course.progress value.
     """
     return CourseSummary(
         id=course.id,
@@ -53,8 +54,8 @@ def get_actual_progress(
     Get the authoritative derived progress from academic state.
 
     academic_state.py calculates progress directly from the
-    number of completed syllabus topics, so this keeps API
-    responses consistent with the intelligence layer.
+    syllabus topics, so API responses remain consistent with
+    the ProfPilot intelligence layer.
     """
     state = build_course_state(
         db=db,
@@ -78,8 +79,18 @@ def get_actual_progress(
 )
 def get_courses(
     db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
 ):
-    courses = db.query(Course).all()
+    """
+    Return only courses owned by the authenticated lecturer.
+    """
+    courses = (
+        db.query(Course)
+        .filter(
+            Course.lecturer_id == current_user.lecturer_id,
+        )
+        .all()
+    )
 
     summaries = []
 
@@ -106,10 +117,17 @@ def get_courses(
 def get_course(
     course_id: str,
     db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
 ):
+    """
+    Return a course only when it belongs to the authenticated lecturer.
+    """
     course = (
         db.query(Course)
-        .filter(Course.id == course_id)
+        .filter(
+            Course.id == course_id,
+            Course.lecturer_id == current_user.lecturer_id,
+        )
         .first()
     )
 

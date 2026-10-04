@@ -1,12 +1,16 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.routers import schedule
-from app.routers import context
 from app.database.db import Base, engine
 
+# Register all SQLAlchemy models before create_all()
 from app.models import academic  # noqa: F401
+from app.models import attendance  # noqa: F401
 
+from app.routers import auth
+from app.routers import attendance as attendance_router
+from app.routers import schedule
+from app.routers import context
 from app.routers import courses
 from app.routers import ai
 from app.routers import memory
@@ -30,11 +34,19 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+# Authentication
+app.include_router(auth.router)
+
+# Existing ProfPilot v2 intelligence/data routes
 app.include_router(context.router)
 app.include_router(courses.router)
 app.include_router(ai.router)
 app.include_router(schedule.router)
 app.include_router(memory.router)
+
+# Friend backend infrastructure
+app.include_router(attendance_router.router)
 
 
 @app.get("/")

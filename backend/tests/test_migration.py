@@ -48,7 +48,13 @@ def test_migration_preserves_data_and_normalises_legacy_fields(tmp_path):
     conn = sqlite3.connect(db)
     assert conn.execute("SELECT lecture_date FROM lecture_logs WHERE id='lecture_001'").fetchone()[0] == "2026-09-18"
     assert conn.execute("SELECT planned_date FROM syllabus_topics WHERE id='t1'").fetchone()[0] == "2026-09-18"
-    assert conn.execute("SELECT covered_in_lecture_id FROM syllabus_topics WHERE id='t1'").fetchone()[0] == "lecture_001"
+    assert conn.execute(
+        "SELECT legacy_completed FROM syllabus_topics WHERE id='t1'"
+    ).fetchone()[0] == 1
+
+    assert conn.execute(
+        "SELECT covered_in_lecture_id FROM syllabus_topics WHERE id='t1'"
+    ).fetchone()[0] is None
     assert conn.execute("SELECT position FROM syllabus_units WHERE id='u1'").fetchone()[0] == 0
     assert conn.execute("SELECT position FROM syllabus_topics WHERE id='t1'").fetchone()[0] == 0
     start, end, lecturer = conn.execute(

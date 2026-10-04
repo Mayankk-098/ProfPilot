@@ -52,17 +52,27 @@ class CourseDetailResponse(CourseSummary):
 class AIQuery(BaseModel):
     message: str
     course_id: str | None = None
+
+
 class AIActionExecute(BaseModel):
     confirmed: bool
     action_plan: dict
+
 
 class ScheduleResponse(BaseModel):
     id: str
     subject: str
     code: str | None
     batch: str
-    time: str
-    period: str
-    room: str
+    weekday: int
+    start_time: str | None
+    end_time: str | None
+    room: str | None
     item_type: str
+    lecturer_id: str | None
     course_id: str | None
+    status: str
+    date: str
+    original_date: str | None
+    time: str | None
+    period: str | None

@@ -8,6 +8,7 @@ from app.models.academic import (
     ScheduleItem,
 )
 from app.services.academic_state import build_course_state
+from app.services import clock, schedule_service
 
 
 def time_to_minutes(item: ScheduleItem) -> int:
@@ -96,9 +97,10 @@ def course_to_dict(
     }
 
 
-def schedule_to_dict(
-    item: ScheduleItem,
-) -> dict:
+def schedule_to_dict(item) -> dict:
+    if isinstance(item, dict):
+        return item
+
     return {
         "id": item.id,
         "subject": item.subject,
@@ -109,6 +111,7 @@ def schedule_to_dict(
         "room": item.room,
         "item_type": item.item_type,
         "course_id": item.course_id,
+        "lecturer_id": getattr(item, "lecturer_id", None),
     }
 
 
@@ -211,37 +214,30 @@ def build_academic_context(
     # ----------------------------------------
     # SCHEDULE
     # ----------------------------------------
+    #
+    # Use the integrated schedule service so that
+    # schedule state is lecturer scoped and
+    # date/time aware.
+    # ----------------------------------------
 
-    schedule = (
-        db.query(ScheduleItem)
-        .all()
+    now = clock.now()
+
+    today_schedule = schedule_service.day_schedule(
+        db,
+        now.date(),
+        lecturer_id=lecturer_id,
     )
 
-    schedule.sort(
-        key=time_to_minutes
+    next_class = schedule_service.next_class(
+        db,
+        now,
+        lecturer_id=lecturer_id,
     )
 
-    class_items = [
-        item
-        for item in schedule
-        if item.item_type == "class"
-    ]
-
-    # ----------------------------------------
-    # DEMO NEXT CLASS
-    # ----------------------------------------
-    #
-    # For the current prototype, the earliest
-    # class in the demo schedule is treated as
-    # the next class.
-    #
-    # Later this becomes date/time aware.
-    # ----------------------------------------
-
-    next_class = (
-        class_items[0]
-        if class_items
-        else None
+    schedule = schedule_service.upcoming(
+        db,
+        now,
+        lecturer_id=lecturer_id,
     )
 
     # ----------------------------------------
@@ -374,7 +370,7 @@ def build_academic_context(
 
     return {
         "current_date":
-            date.today().isoformat(),
+            now.date().isoformat(),
 
         "lecturer": {
             "id": lecturer.id,

@@ -251,6 +251,28 @@ def migrate_syllabus_dates_and_completion(conn):
         "VARCHAR(50)",
     )
 
+    # Preserve legacy completion independently from lecture linkage.
+    # Older ProfPilot versions stored `completed` directly on syllabus_topics.
+    ensure_column(
+        conn,
+        "syllabus_topics",
+        "legacy_completed",
+        "INTEGER NOT NULL DEFAULT 0",
+    )
+
+    topic_columns = columns(conn, "syllabus_topics")
+
+    if "completed" in topic_columns:
+        conn.execute(
+            """
+            UPDATE syllabus_topics
+            SET legacy_completed = CASE
+                WHEN completed = 1 THEN 1
+                ELSE 0
+            END
+            """
+        )
+
     if "planned_date" in topic_columns:
         rows = conn.execute(
             "SELECT id, planned_date FROM syllabus_topics"
@@ -271,100 +293,12 @@ def migrate_syllabus_dates_and_completion(conn):
                 (converted, topic_id),
             )
 
-    # Legacy databases stored completion separately.
-    # Current model derives completion from covered_in_lecture_id.
-    if "completed" in topic_columns:
-        rows = conn.execute(
-            """
-            SELECT id, unit_id, completed, covered_in_lecture_id
-            FROM syllabus_topics
-            ORDER BY unit_id, position, id
-            """
-        ).fetchall()
-
-        for topic_id, unit_id, completed, covered_id in rows:
-            if not completed or covered_id is not None:
-                continue
-
-            course_row = conn.execute(
-                """
-                SELECT su.course_id
-                FROM syllabus_units su
-                WHERE su.id=?
-                """,
-                (unit_id,),
-            ).fetchone()
-
-            if course_row is None:
-                raise RuntimeError(
-                    f"Cannot resolve course for syllabus unit {unit_id}"
-                )
-
-            course_id = course_row[0]
-
-            # Assign completed topics to existing lectures in
-            # chronological order. The mapping is deterministic
-            # and does not invent lecture IDs.
-            lecture_rows = conn.execute(
-                """
-                SELECT id
-                FROM lecture_logs
-                WHERE course_id=?
-                ORDER BY lecture_date, id
-                """,
-                (course_id,),
-            ).fetchall()
-
-            if not lecture_rows:
-                raise RuntimeError(
-                    f"Completed topic {topic_id} belongs to course "
-                    f"{course_id}, but that course has no lectures"
-                )
-
-            completed_before = conn.execute(
-                """
-                SELECT COUNT(*)
-                FROM syllabus_topics st
-                JOIN syllabus_units su
-                  ON su.id=st.unit_id
-                WHERE su.course_id=?
-                  AND st.completed=1
-                  AND (
-                      st.covered_in_lecture_id IS NOT NULL
-                      OR st.id=?
-                  )
-                  AND (
-                      st.position < ?
-                      OR (
-                          st.unit_id=?
-                          AND st.position <= ?
-                      )
-                  )
-                """,
-                (
-                    course_id,
-                    topic_id,
-                    999999,
-                    unit_id,
-                    999999,
-                ),
-            ).fetchone()[0]
-
-            lecture_index = min(
-                max(completed_before - 1, 0),
-                len(lecture_rows) - 1,
-            )
-
-            lecture_id = lecture_rows[lecture_index][0]
-
-            conn.execute(
-                """
-                UPDATE syllabus_topics
-                SET covered_in_lecture_id=?
-                WHERE id=?
-                """,
-                (lecture_id, topic_id),
-            )
+    # Legacy completion is preserved in legacy_completed.
+    #
+    # We intentionally do NOT reconstruct lecture links for old completed
+    # topics. The legacy database may contain completion history without
+    # corresponding lecture records, and inventing those relationships would
+    # corrupt academic history.
 
     # Ensure every covered_in_lecture_id points to a real lecture.
     invalid = conn.execute(

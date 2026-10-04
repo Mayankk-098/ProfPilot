@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from datetime import datetime
+from datetime import date as Date, datetime
 from math import isfinite
 from uuid import uuid4
 
@@ -14,6 +14,7 @@ from app.models.academic import (
     SyllabusTopic,
     SyllabusUnit,
 )
+from app.models.memory import AcademicEvent
 
 
 # Keep execution at least as conservative as the syllabus mapper.
@@ -89,19 +90,34 @@ def _parse_duration(
 
 def _normalize_date(
     date_value,
-) -> str:
-    if date_value:
-        return str(date_value)
+) -> Date:
+    """Normalize common proposal date values to a real date object."""
+    if isinstance(date_value, Date):
+        return date_value
 
-    return datetime.now().strftime(
-        "%Y-%m-%d"
+    if date_value is None:
+        return datetime.now().date()
+
+    value = str(date_value).strip()
+
+    if not value:
+        return datetime.now().date()
+
+    for fmt in ("%Y-%m-%d", "%d %B %Y", "%d %b %Y"):
+        try:
+            return datetime.strptime(value, fmt).date()
+        except ValueError:
+            continue
+
+    raise ValueError(
+        f"Invalid lecture date: {date_value!r}"
     )
 
 
 def _find_duplicate_lecture(
-    db: Session,
+    db,
     course_id: str,
-    date: str,
+    lecture_date: Date,
     description: str,
 ) -> LectureLog | None:
     """
@@ -113,25 +129,20 @@ def _find_duplicate_lecture(
     - repeated API requests
     """
 
-    normalized_description = (
-        _normalize_text(description)
-    )
+    normalized_description = _normalize_text(description)
 
     lectures = (
         db.query(LectureLog)
         .filter(
-            LectureLog.course_id
-            == course_id,
-            LectureLog.date == date,
+            LectureLog.course_id == course_id,
+            LectureLog.lecture_date == lecture_date,
         )
         .all()
     )
 
     for lecture in lectures:
         if (
-            _normalize_text(
-                lecture.description
-            )
+            _normalize_text(lecture.description)
             == normalized_description
         ):
             return lecture
@@ -144,119 +155,60 @@ def _recalculate_course_progress(
     course: Course,
 ) -> dict:
     """
-    Recalculate syllabus progress and
-    teaching pace from current DB state.
+    Read the current derived academic state.
+
+    Progress, pace and completion are now calculated by
+    Course/course_metrics rather than written into DB columns.
     """
 
-    units = (
-        db.query(SyllabusUnit)
-        .filter(
-            SyllabusUnit.course_id
-            == course.id
-        )
-        .all()
-    )
+    # Clear any per-instance metric cache created earlier in the request.
+    course.__dict__.pop("_metrics_cache", None)
+
+    # Ensure relationships are reloaded after the new lecture/topic links.
+    db.expire(course, ["lectures", "units"])
+
+    metrics = course._metrics()
 
     total_topics = 0
     completed_topics = 0
-
     unit_results = []
 
-    for unit in units:
-        topics = (
-            db.query(SyllabusTopic)
-            .filter(
-                SyllabusTopic.unit_id
-                == unit.id
-            )
-            .all()
-        )
-
+    for unit in course.units:
+        topics = list(unit.topics)
         unit_total = len(topics)
-
         unit_completed = sum(
             1
             for topic in topics
             if topic.completed
         )
 
-        if unit_total > 0:
-            unit_progress = round(
-                (
-                    unit_completed
-                    / unit_total
-                )
-                * 100,
-                2,
-            )
-        else:
-            unit_progress = 0.0
-
-        unit.progress = unit_progress
-
         total_topics += unit_total
-        completed_topics += (
-            unit_completed
-        )
+        completed_topics += unit_completed
 
         unit_results.append(
             {
                 "unit_id": unit.id,
                 "unit_name": unit.name,
-                "progress": unit_progress,
-                "completed_topics": (
-                    unit_completed
-                ),
+                "progress": unit.progress,
+                "completed_topics": unit_completed,
                 "total_topics": unit_total,
             }
         )
 
-    if total_topics > 0:
-        course_progress = round(
-            (
-                completed_topics
-                / total_topics
-            )
-            * 100,
-            2,
-        )
-    else:
-        course_progress = 0.0
-
-    # Keep the cached Course.progress field
-    # synchronized for legacy compatibility.
-    course.progress = course_progress
-
-    # The lecture has already been flushed
-    # before this function is called.
     lecture_count = (
         db.query(LectureLog)
         .filter(
-            LectureLog.course_id
-            == course.id
+            LectureLog.course_id == course.id
         )
         .count()
     )
 
-    if lecture_count > 0:
-        course.current_pace = round(
-            completed_topics
-            / lecture_count,
-            2,
-        )
-    else:
-        course.current_pace = 0.0
-
     return {
-        "course_progress": course_progress,
-        "completed_topics": (
-            completed_topics
-        ),
+        "course_progress": metrics["progress"],
+        "completed_topics": completed_topics,
         "total_topics": total_topics,
         "lecture_count": lecture_count,
-        "current_pace": (
-            course.current_pace
-        ),
+        "current_pace": metrics["current_pace"],
         "units": unit_results,
     }
 
@@ -386,7 +338,7 @@ def execute_log_lecture_action(
         "topic"
     )
 
-    date = _normalize_date(
+    lecture_date = _normalize_date(
         proposal.get("date")
     )
 
@@ -411,7 +363,8 @@ def execute_log_lecture_action(
     course = (
         db.query(Course)
         .filter(
-            Course.id == course_id
+            Course.id == course_id,
+            Course.lecturer_id == lecturer_id,
         )
         .first()
     )
@@ -432,7 +385,7 @@ def execute_log_lecture_action(
     duplicate = _find_duplicate_lecture(
         db=db,
         course_id=course_id,
-        date=date,
+        lecture_date=lecture_date,
         description=topic,
     )
 
@@ -587,7 +540,7 @@ def execute_log_lecture_action(
 
     lecture = LectureLog(
         id=uuid4().hex,
-        date=date,
+        lecture_date=lecture_date,
         duration=duration,
         description=topic,
         course_id=course_id,
@@ -596,23 +549,27 @@ def execute_log_lecture_action(
     db.add(lecture)
 
     # -------------------------------------------------
+    # Flush so the lecture becomes valid FK evidence.
+    # -------------------------------------------------
+
+    db.flush()
+
+    # -------------------------------------------------
     # MARK SYLLABUS TOPICS
+    # -------------------------------------------------
+    #
+    # Completion is now derived from covered_in_lecture_id.
     # -------------------------------------------------
 
     completed_topic_names = []
 
     for syllabus_topic in verified_topics:
         if not syllabus_topic.completed:
-            syllabus_topic.completed = True
+            syllabus_topic.covered_in_lecture_id = lecture.id
 
             completed_topic_names.append(
                 syllabus_topic.name
             )
-
-    # -------------------------------------------------
-    # IMPORTANT:
-    # Flush before calculating lecture_count.
-    # -------------------------------------------------
 
     db.flush()
 
@@ -626,6 +583,36 @@ def execute_log_lecture_action(
             course=course,
         )
     )
+
+    # -------------------------------------------------
+    # AUTOMATIC ACADEMIC MEMORY
+    # -------------------------------------------------
+    #
+    # Successful lecture actions become persistent academic
+    # events so later AI queries can retrieve them through the
+    # existing memory_relevance layer.
+    #
+    # Keep this in the same transaction as the lecture and
+    # syllabus mutation.
+    # -------------------------------------------------
+
+    completed_names = ", ".join(
+        completed_topic_names
+    ) or "no new syllabus topics"
+
+    memory_event = AcademicEvent(
+        lecturer_id=lecturer_id,
+        course_id=course_id,
+        event_type="lecture_logged",
+        title=f"Lecture recorded: {topic}",
+        summary=(
+            f"Recorded a {course.short_name} lecture on "
+            f"{lecture_date.isoformat()} covering {topic}. "
+            f"Newly completed topics: {completed_names}."
+        ),
+    )
+
+    db.add(memory_event)
 
     db.commit()
 

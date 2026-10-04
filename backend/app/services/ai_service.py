@@ -1,4 +1,7 @@
 import re
+
+from app.models.academic import Course
+from app.services import attendance_service
 from app.services.action_planner import plan_action
 from sqlalchemy.orm import Session
 from app.services.entity_resolver import resolve_entities
@@ -744,6 +747,113 @@ class ProfPilotAI:
             }
 
         # --------------------------------
+
+        # --------------------------------
+        # LOW ATTENDANCE QUERY
+        # --------------------------------
+
+        if route_to(
+            "query_attendance_low",
+            "below 75",
+            "low attendance",
+            "low-attendance",
+            "attendance below",
+        ):
+            if not effective_course_id:
+                return {
+                    "type": "attendance",
+                    "answer": (
+                        "I could not determine which course "
+                        "you want me to analyse."
+                    ),
+                    "confidence": 0.90,
+                    "requires_confirmation": False,
+                }
+
+            attendance_course = (
+                db.query(Course)
+                .filter(
+                    Course.id == effective_course_id,
+                    Course.lecturer_id == lecturer_id,
+                )
+                .first()
+            )
+
+            if attendance_course is None:
+                return {
+                    "type": "attendance",
+                    "answer": (
+                        "I could not find that course in "
+                        "your academic records."
+                    ),
+                    "confidence": 0.95,
+                    "requires_confirmation": False,
+                }
+
+            attendance_result = (
+                attendance_service.build_course_attendance(
+                    db=db,
+                    course=attendance_course,
+                    flagged_only=True,
+                )
+            )
+
+            flagged_students = attendance_result["students"]
+
+            if not flagged_students:
+                return {
+                    "type": "attendance",
+                    "answer": (
+                        f"No students in "
+                        f"{attendance_course.short_name} are "
+                        "currently below the 75% attendance threshold."
+                    ),
+                    "data": {
+                        "course_id": attendance_course.id,
+                        "threshold_pct": 75,
+                        "flagged_count": 0,
+                        "students": [],
+                    },
+                    "confidence": 0.97,
+                    "requires_confirmation": False,
+                }
+
+            attendance_lines = [
+                f"{attendance_course.short_name} has "
+                f"{len(flagged_students)} student(s) below "
+                "the 75% attendance threshold:"
+            ]
+
+            for student in flagged_students:
+                recovery = student["classes_needed_to_recover"]
+
+                recovery_text = (
+                    f"; needs {recovery} consecutive class(es) to recover"
+                    if recovery
+                    else ""
+                )
+
+                attendance_lines.append(
+                    f"? {student['name']} "
+                    f"({student['roll_no']}) ? "
+                    f"{student['percentage']:.1f}%"
+                    f"{recovery_text}"
+                )
+
+            return {
+                "type": "attendance",
+                "answer": "\n".join(attendance_lines),
+                "data": {
+                    "course_id": attendance_course.id,
+                    "course": attendance_course.short_name,
+                    "threshold_pct": 75,
+                    "flagged_count": len(flagged_students),
+                    "students": flagged_students,
+                },
+                "confidence": 0.97,
+                "requires_confirmation": False,
+            }
+
         # COURSE FINISH PREDICTION
         # --------------------------------
 
