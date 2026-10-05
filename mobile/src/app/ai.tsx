@@ -212,7 +212,14 @@ export default function AIScreen() {
     const actionPlan =
       item.response?.data
         ?.action_plan;
-
+    console.log(
+      "ACTION PLAN BEFORE EXECUTE:",
+      JSON.stringify(
+        actionPlan,
+        null,
+        2
+      )
+    );
     if (!actionPlan) {
       return;
     }

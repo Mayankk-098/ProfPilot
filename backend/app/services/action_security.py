@@ -28,9 +28,57 @@ def _get_secret() -> str:
     return secret
 
 
+def _normalize_for_signing(value):
+    """
+    Normalize JSON-compatible values so semantically equivalent
+    values such as 1 and 1.0 produce the same canonical form.
+    """
+    if isinstance(value, dict):
+        return {
+            key: _normalize_for_signing(item)
+            for key, item in value.items()
+        }
+
+    if isinstance(value, list):
+        return [
+            _normalize_for_signing(item)
+            for item in value
+        ]
+
+    if isinstance(value, float):
+        if value.is_integer():
+            return int(value)
+
+    return value
+
+
 def _canonicalize_action_plan(
     action_plan: dict,
 ) -> str:
+    """
+    Produce deterministic JSON for signing.
+
+    The token itself is excluded from the signed content.
+    Numeric values are normalized so JavaScript round-trips
+    such as 1.0 -> 1 do not invalidate a valid proposal.
+    """
+    unsigned_plan = dict(action_plan)
+
+    unsigned_plan.pop(
+        "proposal_token",
+        None,
+    )
+
+    normalized_plan = _normalize_for_signing(
+        unsigned_plan
+    )
+
+    return json.dumps(
+        normalized_plan,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+    )
     """
     Produce deterministic JSON for signing.
 

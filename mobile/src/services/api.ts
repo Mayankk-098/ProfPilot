@@ -269,10 +269,16 @@ async function request<T>(
   }
 
   if (!response.ok) {
-    const message =
+    
+    const rawMessage =
       data?.detail ||
       data?.message ||
       `API error: ${response.status}`;
+
+    const message =
+      typeof rawMessage === "string"
+        ? rawMessage
+        : JSON.stringify(rawMessage);
 
     throw new Error(message);
   }

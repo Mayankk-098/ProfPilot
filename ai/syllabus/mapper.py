@@ -34,7 +34,8 @@ def _normalize_tokens(text: str | None) -> set[str]:
 
     text = str(text).lower()
 
-    # Treat punctuation such as B+ or B-tree as separators.
+    # Treat punctuation such as B+ or B-tree as separators
+    # for the general lexical gate.
     text = re.sub(
         r"[^a-z0-9]+",
         " ",
@@ -93,6 +94,49 @@ def _normalize_tokens(text: str | None) -> set[str]:
     }
 
 
+def _normalize_phrase(text: str | None) -> str:
+    """
+    Normalize text for exact topic-phrase matching.
+
+    Unlike _normalize_tokens(), this intentionally preserves
+    '+' because it is meaningful in syllabus names such as
+    'B+ Trees'.
+    """
+
+    if not text:
+        return ""
+
+    text = str(text).lower()
+
+    text = re.sub(
+        r"[^a-z0-9+]+",
+        " ",
+        text,
+    )
+
+    return " ".join(
+        text.split()
+    )
+
+
+def _phrase_in_text(
+    phrase: str,
+    text: str,
+) -> bool:
+    """
+    Check whether a complete normalized phrase occurs
+    inside normalized text.
+    """
+
+    if not phrase or not text:
+        return False
+
+    return (
+        f" {phrase} " in
+        f" {text} "
+    )
+
+
 def _build_topic_text(
     topic: SyllabusTopic,
 ) -> str:
@@ -100,6 +144,7 @@ def _build_topic_text(
     Build the searchable representation of a topic.
 
     Important:
+
     The unit name is NOT injected into the searchable text.
 
     Example:
@@ -141,9 +186,10 @@ def map_lecture_to_syllabus(
 
     1. Require a meaningful lexical overlap between the
        lecture description and the topic name.
-    2. Use TF-IDF cosine similarity to rank candidates.
-    3. Discard weak similarity scores.
-    4. Return at most top_k matches.
+    2. Prefer an exact syllabus topic phrase when one exists.
+    3. Use TF-IDF cosine similarity to rank candidates.
+    4. Discard weak similarity scores.
+    5. Return at most top_k matches.
 
     This is intentionally conservative. A vague lecture
     description should produce no match rather than
@@ -206,6 +252,47 @@ def map_lecture_to_syllabus(
 
     if not candidate_topics:
         return []
+
+    # -------------------------------------------------
+    # EXACT TOPIC PHRASE PREFERENCE
+    # -------------------------------------------------
+    #
+    # This solves cases such as:
+    #
+    #   "B Trees"  vs  "B+ Trees"
+    #
+    # The general lexical gate intentionally treats "+"
+    # as punctuation, which means both topics can become
+    # "b trees" during token matching.
+    #
+    # Before running TF-IDF, prefer exact topic phrases
+    # when one is explicitly present in the lecture text.
+    # -------------------------------------------------
+
+    lecture_phrase = _normalize_phrase(
+        description
+    )
+
+    exact_candidates = []
+
+    for topic, topic_text in candidate_topics:
+        topic_phrase = _normalize_phrase(
+            topic_text
+        )
+
+        if _phrase_in_text(
+            topic_phrase,
+            lecture_phrase,
+        ):
+            exact_candidates.append(
+                (
+                    topic,
+                    topic_text,
+                )
+            )
+
+    if exact_candidates:
+        candidate_topics = exact_candidates
 
     topic_texts = [
         topic_text

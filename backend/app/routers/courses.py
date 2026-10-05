@@ -150,7 +150,11 @@ def get_course(
                 id=topic.id,
                 name=topic.name,
                 completed=topic.completed,
-                planned_date=topic.planned_date,
+                planned_date=(
+                    topic.planned_date.isoformat()
+                    if topic.planned_date
+                    else None
+                ),
             )
             for topic in unit.topics
         ]
@@ -167,7 +171,11 @@ def get_course(
     lectures = [
         LectureResponse(
             id=lecture.id,
-            date=lecture.date,
+            date=(
+                lecture.date.isoformat()
+                if hasattr(lecture.date, "isoformat")
+                else str(lecture.date)
+            ),
             duration=lecture.duration,
             description=lecture.description,
         )
