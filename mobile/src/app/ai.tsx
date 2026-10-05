@@ -1,3 +1,4 @@
+
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -10,12 +11,24 @@ import {
   View,
 } from "react-native";
 
-import { useRef, useState } from "react";
-import { useRouter } from "expo-router";
+import {
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 
 import {
+  useLocalSearchParams,
+  useRouter,
+} from "expo-router";
+
+import {
+  executeAIAction,
+  getAcademicContext,
+  getMe,
   queryProfPilotAI,
   AIQueryResponse,
+  AcademicContext,
 } from "../services/api";
 
 type Message = {
@@ -25,40 +38,104 @@ type Message = {
   response?: AIQueryResponse;
 };
 
-const suggestions = [
-  "When will I finish my DBMS syllabus?",
-  "What if I cancel my next DBMS class?",
-  "What did I teach in my last DBMS lecture?",
-  "Which students are below 75% attendance?",
-];
-
 export default function AIScreen() {
   const router = useRouter();
 
-  const scrollRef = useRef<ScrollView>(null);
+  const { course_id } =
+    useLocalSearchParams<{
+      course_id?: string;
+    }>();
 
-  const [message, setMessage] = useState("");
-  const [loading, setLoading] = useState(false);
+  const scrollRef =
+    useRef<ScrollView>(null);
 
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [context, setContext] =
+    useState<AcademicContext | null>(
+      null
+    );
 
-  const sendMessage = async (textOverride?: string) => {
-    const text = (textOverride ?? message).trim();
+  const selectedCourseId =
+    Array.isArray(course_id)
+      ? course_id[0]
+      : course_id;
+
+  const [activeCourseId, setActiveCourseId] =
+    useState<string | undefined>(
+      selectedCourseId
+    );
+
+  const [message, setMessage] =
+    useState("");
+
+  const [messages, setMessages] =
+    useState<Message[]>([]);
+
+  const [loading, setLoading] =
+    useState(false);
+
+  const [executingId, setExecutingId] =
+    useState<string | null>(null);
+
+  useEffect(() => {
+    loadContext();
+  }, [selectedCourseId]);
+
+  async function loadContext() {
+    try {
+      const me = await getMe();
+
+      const data =
+        await getAcademicContext(
+          me.lecturer_id,
+          selectedCourseId
+        );
+
+      setContext(data);
+
+      setActiveCourseId(
+        selectedCourseId ||
+          data.selected_course?.id
+      );
+    } catch (error) {
+      console.error(
+        "AI context error:",
+        error
+      );
+    }
+  }
+
+  const courseName =
+    context?.selected_course
+      ?.short_name ||
+    context?.selected_course?.name ||
+    "your academic workspace";
+
+  async function sendMessage(
+    override?: string
+  ) {
+    const text =
+      (
+        override ??
+        message
+      ).trim();
 
     if (!text || loading) {
       return;
     }
 
     const userMessage: Message = {
-      id: `${Date.now()}-user`,
+      id:
+        `${Date.now()}-user`,
       role: "user",
       text,
     };
 
-    setMessages((previous) => [
-      ...previous,
-      userMessage,
-    ]);
+    setMessages(
+      (previous) => [
+        ...previous,
+        userMessage,
+      ]
+    );
 
     setMessage("");
     setLoading(true);
@@ -67,47 +144,132 @@ export default function AIScreen() {
       scrollRef.current?.scrollToEnd({
         animated: true,
       });
-    }, 100);
+    }, 80);
 
     try {
-      const result = await queryProfPilotAI({
+      const requestData: {
+        message: string;
+        course_id?: string;
+      } = {
         message: text,
-        course_id: "dbms",
-      });
+      };
+
+      if (activeCourseId) {
+        requestData.course_id =
+          activeCourseId;
+      }
+
+      const result =
+        await queryProfPilotAI(
+          requestData
+        );
 
       const assistantMessage: Message = {
-        id: `${Date.now()}-assistant`,
+        id:
+          `${Date.now()}-assistant`,
         role: "assistant",
         text: result.answer,
         response: result,
       };
 
-      setMessages((previous) => [
-        ...previous,
-        assistantMessage,
-      ]);
+      setMessages(
+        (previous) => [
+          ...previous,
+          assistantMessage,
+        ]
+      );
 
       setTimeout(() => {
         scrollRef.current?.scrollToEnd({
           animated: true,
         });
-      }, 100);
+      }, 80);
     } catch (error) {
-      const errorMessage: Message = {
-        id: `${Date.now()}-error`,
-        role: "assistant",
-        text:
-          "I couldn't connect to the ProfPilot server. Please make sure the backend is running and your phone can reach your laptop.",
-      };
+      console.error(error);
 
-      setMessages((previous) => [
-        ...previous,
-        errorMessage,
-      ]);
+      setMessages(
+        (previous) => [
+          ...previous,
+          {
+            id:
+              `${Date.now()}-error`,
+            role: "assistant",
+            text:
+              error instanceof Error
+                ? error.message
+                : "Couldn't connect to ProfPilot AI.",
+          },
+        ]
+      );
     } finally {
       setLoading(false);
     }
-  };
+  }
+
+  async function confirmAction(
+    item: Message
+  ) {
+    const actionPlan =
+      item.response?.data
+        ?.action_plan;
+
+    if (!actionPlan) {
+      return;
+    }
+
+    try {
+      setExecutingId(item.id);
+
+      const result =
+        await executeAIAction({
+          confirmed: true,
+          action_plan:
+            actionPlan,
+        });
+
+      setMessages(
+        (previous) =>
+          previous.map(
+            (message) =>
+              message.id ===
+              item.id
+                ? {
+                    ...message,
+                    text:
+                      `${message.text}\n\n${result.answer}`,
+                    response:
+                      result,
+                  }
+                : message
+          )
+      );
+    } catch (error) {
+      console.error(error);
+
+      setMessages(
+        (previous) => [
+          ...previous,
+          {
+            id:
+              `${Date.now()}-execute-error`,
+            role: "assistant",
+            text:
+              error instanceof Error
+                ? error.message
+                : "Action execution failed.",
+          },
+        ]
+      );
+    } finally {
+      setExecutingId(null);
+    }
+  }
+
+  const suggestions = [
+    `When will I finish my ${courseName} syllabus?`,
+    `What did I teach in my last ${courseName} lecture?`,
+    "Which students are below 75% attendance?",
+  ];
 
   return (
     <KeyboardAvoidingView
@@ -119,142 +281,183 @@ export default function AIScreen() {
       }
     >
       {/* HEADER */}
+
       <View style={styles.header}>
         <Pressable
           onPress={() => router.back()}
           style={styles.backButton}
         >
-          <Text style={styles.back}>‹</Text>
+          <Text style={styles.back}>
+            ‹
+          </Text>
         </Pressable>
 
-        <View style={styles.headerText}>
+        <View
+          style={
+            styles.headerContent
+          }
+        >
           <Text style={styles.title}>
             ProfPilot AI
           </Text>
 
           <Text style={styles.subtitle}>
-            Academic companion
+            {selectedCourseId
+              ? courseName
+              : "Academic companion"}
           </Text>
         </View>
 
-        <View style={styles.statusContainer}>
-          <View style={styles.statusDot} />
-        </View>
+        <View
+          style={styles.statusDot}
+        />
       </View>
 
       {/* CHAT */}
+
       <ScrollView
         ref={scrollRef}
         style={styles.chat}
-        contentContainerStyle={styles.chatContent}
-        showsVerticalScrollIndicator={false}
+        contentContainerStyle={
+          styles.chatContent
+        }
+        showsVerticalScrollIndicator={
+          false
+        }
         keyboardShouldPersistTaps="handled"
       >
         {messages.length === 0 && (
           <>
-            <View style={styles.welcomeCard}>
+            <View style={styles.welcome}>
               <View style={styles.aiIcon}>
-                <Text style={styles.aiIconText}>
+                <Text
+                  style={
+                    styles.aiIconText
+                  }
+                >
                   ✦
                 </Text>
               </View>
 
-              <Text style={styles.welcomeTitle}>
-                Good evening, Dr. Sharma
+              <Text
+                style={styles.welcomeTitle}
+              >
+                ProfPilot AI
               </Text>
 
-              <Text style={styles.welcomeText}>
-                I'm ProfPilot, your academic
-                companion. I can help you understand
-                your schedule, courses, syllabus
-                progress and academic workload.
+              <Text
+                style={styles.welcomeText}
+              >
+                Ask about courses, syllabus,
+                schedule, attendance or your
+                academic workload.
               </Text>
             </View>
 
-            <Text style={styles.sectionLabel}>
+            <Text style={styles.tryLabel}>
               TRY ASKING
             </Text>
 
-            {suggestions.map((question) => (
-              <Pressable
-                key={question}
-                style={({ pressed }) => [
-                  styles.suggestion,
-                  pressed && styles.pressed,
-                ]}
-                onPress={() =>
-                  sendMessage(question)
-                }
-              >
-                <Text style={styles.suggestionText}>
-                  {question}
-                </Text>
+            {suggestions.map(
+              (question) => (
+                <Pressable
+                  key={question}
+                  style={styles.suggestion}
+                  onPress={() =>
+                    sendMessage(
+                      question
+                    )
+                  }
+                >
+                  <Text
+                    style={
+                      styles.suggestionText
+                    }
+                  >
+                    {question}
+                  </Text>
 
-                <Text style={styles.arrow}>
-                  →
-                </Text>
-              </Pressable>
-            ))}
+                  <Text
+                    style={styles.arrow}
+                  >
+                    →
+                  </Text>
+                </Pressable>
+              )
+            )}
           </>
         )}
 
-        {messages.map((item) => {
-          const isUser = item.role === "user";
+        {messages.map(
+          (item) => {
+            const isUser =
+              item.role ===
+              "user";
 
-          return (
-            <View
-              key={item.id}
-              style={[
-                styles.messageRow,
-                isUser
-                  ? styles.userRow
-                  : styles.assistantRow,
-              ]}
-            >
+            const requiresConfirmation =
+              !isUser &&
+              item.response
+                ?.requires_confirmation;
+
+            return (
               <View
+                key={item.id}
                 style={[
-                  styles.messageBubble,
+                  styles.messageRow,
                   isUser
-                    ? styles.userBubble
-                    : styles.assistantBubble,
+                    ? styles.userRow
+                    : styles.assistantRow,
                 ]}
               >
-                {!isUser && (
-                  <Text style={styles.messageLabel}>
-                    PROFPILOT
-                  </Text>
-                )}
-
-                <Text
+                <View
                   style={[
-                    styles.messageText,
+                    styles.bubble,
                     isUser
-                      ? styles.userText
-                      : styles.assistantText,
+                      ? styles.userBubble
+                      : styles.assistantBubble,
                   ]}
                 >
-                  {item.text}
-                </Text>
-
-                {!isUser &&
-                  item.response?.confidence !==
-                    undefined && (
-                    <Text style={styles.confidence}>
-                      Confidence{" "}
-                      {Math.round(
-                        item.response.confidence *
-                          100
-                      )}
-                      %
+                  {!isUser && (
+                    <Text
+                      style={
+                        styles.messageLabel
+                      }
+                    >
+                      PROFPILOT
                     </Text>
                   )}
 
-                {!isUser &&
-                  item.response
-                    ?.requires_confirmation && (
+                  <Text
+                    style={
+                      styles.messageText
+                    }
+                  >
+                    {item.text}
+                  </Text>
+
+                  {!isUser &&
+                    item.response
+                      ?.confidence !==
+                      undefined && (
+                      <Text
+                        style={
+                          styles.confidence
+                        }
+                      >
+                        Confidence{" "}
+                        {Math.round(
+                          item.response
+                            .confidence *
+                            100
+                        )}
+                        %
+                      </Text>
+                    )}
+
+                  {requiresConfirmation && (
                     <View
                       style={
-                        styles.confirmationBox
+                        styles.confirmation
                       }
                     >
                       <Text
@@ -262,36 +465,42 @@ export default function AIScreen() {
                           styles.confirmationText
                         }
                       >
-                        This action requires your
-                        confirmation before it can be
-                        executed.
+                        This action requires
+                        your confirmation.
                       </Text>
 
-                      <View
+                      <Pressable
                         style={
-                          styles.confirmButtons
+                          styles.confirmButton
+                        }
+                        onPress={() =>
+                          confirmAction(
+                            item
+                          )
+                        }
+                        disabled={
+                          executingId ===
+                          item.id
                         }
                       >
-                        <Pressable
+                        <Text
                           style={
-                            styles.confirmButton
+                            styles.confirmText
                           }
                         >
-                          <Text
-                            style={
-                              styles.confirmButtonText
-                            }
-                          >
-                            Review
-                          </Text>
-                        </Pressable>
-                      </View>
+                          {executingId ===
+                          item.id
+                            ? "Executing..."
+                            : "Confirm & Execute"}
+                        </Text>
+                      </Pressable>
                     </View>
                   )}
+                </View>
               </View>
-            </View>
-          );
-        })}
+            );
+          }
+        )}
 
         {loading && (
           <View
@@ -302,32 +511,30 @@ export default function AIScreen() {
           >
             <View
               style={[
-                styles.messageBubble,
+                styles.bubble,
                 styles.assistantBubble,
               ]}
             >
-              <Text style={styles.messageLabel}>
-                PROFPILOT
+              <ActivityIndicator
+                color="#6FC5FF"
+              />
+
+              <Text
+                style={styles.thinking}
+              >
+                Thinking...
               </Text>
-
-              <View style={styles.loadingRow}>
-                <ActivityIndicator
-                  size="small"
-                  color="#6FC5FF"
-                />
-
-                <Text style={styles.loadingText}>
-                  Thinking...
-                </Text>
-              </View>
             </View>
           </View>
         )}
 
-        <View style={{ height: 30 }} />
+        <View
+          style={{ height: 20 }}
+        />
       </ScrollView>
 
       {/* INPUT */}
+
       <View style={styles.inputArea}>
         <TextInput
           style={styles.input}
@@ -340,14 +547,19 @@ export default function AIScreen() {
         />
 
         <Pressable
-          style={({ pressed }) => [
-            styles.sendButton,
-            pressed && styles.pressed,
-            (!message.trim() || loading) &&
-              styles.disabledButton,
+          style={[
+            styles.send,
+            (!message.trim() ||
+              loading) &&
+              styles.sendDisabled,
           ]}
-          onPress={() => sendMessage()}
-          disabled={!message.trim() || loading}
+          onPress={() =>
+            sendMessage()
+          }
+          disabled={
+            !message.trim() ||
+            loading
+          }
         >
           <Text style={styles.sendText}>
             ↑
@@ -358,277 +570,251 @@ export default function AIScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: "#0B0D10",
-  },
+const styles =
+  StyleSheet.create({
+    screen: {
+      flex: 1,
+      backgroundColor: "#0B0D10",
+    },
 
-  header: {
-    height: 110,
-    paddingHorizontal: 20,
-    paddingTop: 55,
-    flexDirection: "row",
-    alignItems: "center",
-    borderBottomWidth: 1,
-    borderBottomColor: "#20242B",
-  },
+    header: {
+      height: 105,
+      paddingHorizontal: 20,
+      paddingTop: 50,
+      flexDirection: "row",
+      alignItems: "center",
+      borderBottomWidth: 1,
+      borderBottomColor: "#20242B",
+    },
 
-  backButton: {
-    paddingRight: 14,
-  },
+    backButton: {
+      paddingRight: 14,
+    },
 
-  back: {
-    color: "#FFFFFF",
-    fontSize: 38,
-    lineHeight: 38,
-  },
+    back: {
+      color: "#FFFFFF",
+      fontSize: 38,
+      lineHeight: 38,
+    },
 
-  headerText: {
-    justifyContent: "center",
-  },
+    headerContent: {
+      flex: 1,
+    },
 
-  title: {
-    color: "#FFFFFF",
-    fontSize: 19,
-    fontWeight: "700",
-  },
+    title: {
+      color: "#FFFFFF",
+      fontSize: 19,
+      fontWeight: "700",
+    },
 
-  subtitle: {
-    color: "#747E8B",
-    fontSize: 12,
-    marginTop: 3,
-  },
+    subtitle: {
+      color: "#6FC5FF",
+      fontSize: 11,
+      marginTop: 3,
+    },
 
-  statusContainer: {
-    marginLeft: "auto",
-  },
+    statusDot: {
+      width: 9,
+      height: 9,
+      borderRadius: 5,
+      backgroundColor: "#72D6A0",
+    },
 
-  statusDot: {
-    width: 9,
-    height: 9,
-    borderRadius: 5,
-    backgroundColor: "#72D6A0",
-  },
+    chat: {
+      flex: 1,
+    },
 
-  chat: {
-    flex: 1,
-  },
+    chatContent: {
+      padding: 20,
+    },
 
-  chatContent: {
-    padding: 20,
-  },
+    welcome: {
+      backgroundColor: "#121820",
+      borderRadius: 21,
+      padding: 20,
+      marginBottom: 25,
+      borderWidth: 1,
+      borderColor: "#1E2A35",
+    },
 
-  welcomeCard: {
-    backgroundColor: "#121820",
-    borderRadius: 22,
-    padding: 22,
-    marginBottom: 28,
-    borderWidth: 1,
-    borderColor: "#1E2A35",
-  },
+    aiIcon: {
+      width: 45,
+      height: 45,
+      borderRadius: 14,
+      backgroundColor: "#1D2B37",
+      alignItems: "center",
+      justifyContent: "center",
+      marginBottom: 14,
+    },
 
-  aiIcon: {
-    width: 46,
-    height: 46,
-    borderRadius: 14,
-    backgroundColor: "#1D2B37",
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 15,
-  },
+    aiIconText: {
+      color: "#6FC5FF",
+      fontSize: 23,
+    },
 
-  aiIconText: {
-    color: "#6FC5FF",
-    fontSize: 23,
-  },
+    welcomeTitle: {
+      color: "#FFFFFF",
+      fontSize: 20,
+      fontWeight: "700",
+    },
 
-  welcomeTitle: {
-    color: "#FFFFFF",
-    fontSize: 20,
-    fontWeight: "700",
-  },
+    welcomeText: {
+      color: "#8A95A3",
+      fontSize: 13,
+      lineHeight: 20,
+      marginTop: 8,
+    },
 
-  welcomeText: {
-    color: "#8A95A3",
-    fontSize: 13,
-    lineHeight: 20,
-    marginTop: 9,
-  },
+    tryLabel: {
+      color: "#66707D",
+      fontSize: 10,
+      fontWeight: "700",
+      letterSpacing: 1,
+      marginBottom: 10,
+    },
 
-  sectionLabel: {
-    color: "#66707D",
-    fontSize: 11,
-    fontWeight: "700",
-    letterSpacing: 1.2,
-    marginBottom: 12,
-  },
+    suggestion: {
+      backgroundColor: "#171A20",
+      borderRadius: 15,
+      padding: 16,
+      marginBottom: 10,
+      flexDirection: "row",
+      alignItems: "center",
+    },
 
-  suggestion: {
-    backgroundColor: "#171A20",
-    borderRadius: 15,
-    padding: 16,
-    marginBottom: 10,
-    flexDirection: "row",
-    alignItems: "center",
-  },
+    suggestionText: {
+      flex: 1,
+      color: "#E0E5EB",
+      fontSize: 13,
+      lineHeight: 19,
+    },
 
-  pressed: {
-    opacity: 0.7,
-    transform: [{ scale: 0.98 }],
-  },
+    arrow: {
+      color: "#6FC5FF",
+      fontSize: 18,
+      marginLeft: 10,
+    },
 
-  suggestionText: {
-    color: "#E0E5EB",
-    fontSize: 14,
-    lineHeight: 20,
-    flex: 1,
-  },
+    messageRow: {
+      width: "100%",
+      marginBottom: 12,
+    },
 
-  arrow: {
-    color: "#6FC5FF",
-    fontSize: 20,
-    marginLeft: 10,
-  },
+    userRow: {
+      alignItems: "flex-end",
+    },
 
-  messageRow: {
-    width: "100%",
-    marginBottom: 12,
-  },
+    assistantRow: {
+      alignItems: "flex-start",
+    },
 
-  userRow: {
-    alignItems: "flex-end",
-  },
+    bubble: {
+      maxWidth: "88%",
+      borderRadius: 18,
+      padding: 15,
+    },
 
-  assistantRow: {
-    alignItems: "flex-start",
-  },
+    userBubble: {
+      backgroundColor: "#2A3946",
+    },
 
-  messageBubble: {
-    maxWidth: "87%",
-    borderRadius: 18,
-    padding: 15,
-  },
+    assistantBubble: {
+      backgroundColor: "#171A20",
+      borderWidth: 1,
+      borderColor: "#242B33",
+    },
 
-  userBubble: {
-    backgroundColor: "#2A3946",
-    borderBottomRightRadius: 5,
-  },
+    messageLabel: {
+      color: "#6FC5FF",
+      fontSize: 9,
+      fontWeight: "800",
+      letterSpacing: 1,
+      marginBottom: 7,
+    },
 
-  assistantBubble: {
-    backgroundColor: "#171A20",
-    borderBottomLeftRadius: 5,
-    borderWidth: 1,
-    borderColor: "#242B33",
-  },
+    messageText: {
+      color: "#E2E7EC",
+      fontSize: 14,
+      lineHeight: 21,
+    },
 
-  messageLabel: {
-    color: "#6FC5FF",
-    fontSize: 9,
-    fontWeight: "800",
-    letterSpacing: 1,
-    marginBottom: 7,
-  },
+    confidence: {
+      color: "#62707D",
+      fontSize: 9,
+      marginTop: 9,
+    },
 
-  messageText: {
-    fontSize: 14,
-    lineHeight: 21,
-  },
+    confirmation: {
+      borderTopWidth: 1,
+      borderTopColor: "#292F36",
+      marginTop: 12,
+      paddingTop: 12,
+    },
 
-  userText: {
-    color: "#F0F4F8",
-  },
+    confirmationText: {
+      color: "#7F8995",
+      fontSize: 10,
+      lineHeight: 16,
+    },
 
-  assistantText: {
-    color: "#DCE2E8",
-  },
+    confirmButton: {
+      alignSelf: "flex-start",
+      backgroundColor: "#FFFFFF",
+      borderRadius: 9,
+      paddingHorizontal: 13,
+      paddingVertical: 9,
+      marginTop: 10,
+    },
 
-  confidence: {
-    color: "#62707D",
-    fontSize: 9,
-    marginTop: 10,
-  },
+    confirmText: {
+      color: "#0B0D10",
+      fontSize: 11,
+      fontWeight: "700",
+    },
 
-  loadingRow: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
+    thinking: {
+      color: "#7E8794",
+      fontSize: 11,
+      marginTop: 8,
+    },
 
-  loadingText: {
-    color: "#798591",
-    fontSize: 12,
-    marginLeft: 8,
-  },
+    inputArea: {
+      padding: 12,
+      flexDirection: "row",
+      borderTopWidth: 1,
+      borderTopColor: "#20242B",
+      backgroundColor: "#0B0D10",
+    },
 
-  confirmationBox: {
-    marginTop: 13,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: "#292F36",
-  },
+    input: {
+      flex: 1,
+      minHeight: 48,
+      maxHeight: 110,
+      backgroundColor: "#171A20",
+      borderRadius: 16,
+      color: "#FFFFFF",
+      paddingHorizontal: 15,
+      paddingVertical: 12,
+      fontSize: 14,
+    },
 
-  confirmationText: {
-    color: "#7F8995",
-    fontSize: 10,
-    lineHeight: 16,
-  },
+    send: {
+      width: 48,
+      height: 48,
+      borderRadius: 16,
+      backgroundColor: "#FFFFFF",
+      justifyContent: "center",
+      alignItems: "center",
+      marginLeft: 8,
+    },
 
-  confirmButtons: {
-    flexDirection: "row",
-    marginTop: 10,
-  },
+    sendDisabled: {
+      opacity: 0.35,
+    },
 
-  confirmButton: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 9,
-    paddingVertical: 8,
-    paddingHorizontal: 13,
-  },
-
-  confirmButtonText: {
-    color: "#0B0D10",
-    fontSize: 11,
-    fontWeight: "700",
-  },
-
-  inputArea: {
-    padding: 12,
-    borderTopWidth: 1,
-    borderTopColor: "#20242B",
-    flexDirection: "row",
-    alignItems: "flex-end",
-    backgroundColor: "#0B0D10",
-  },
-
-  input: {
-    flex: 1,
-    minHeight: 48,
-    maxHeight: 120,
-    backgroundColor: "#171A20",
-    borderRadius: 16,
-    color: "#FFFFFF",
-    paddingHorizontal: 16,
-    paddingVertical: 13,
-    fontSize: 14,
-  },
-
-  sendButton: {
-    width: 48,
-    height: 48,
-    borderRadius: 16,
-    backgroundColor: "#FFFFFF",
-    justifyContent: "center",
-    alignItems: "center",
-    marginLeft: 8,
-  },
-
-  disabledButton: {
-    opacity: 0.35,
-  },
-
-  sendText: {
-    color: "#0B0D10",
-    fontSize: 24,
-    fontWeight: "700",
-  },
-});
+    sendText: {
+      color: "#0B0D10",
+      fontSize: 24,
+      fontWeight: "700",
+    },
+  });

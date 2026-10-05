@@ -1,174 +1,279 @@
-import BottomNav from "../components/BottomNav";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
-import { useRouter } from "expo-router";
-import type { ReactNode } from "react";
+import {
+  ActivityIndicator,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
+
+import {
+  useEffect,
+  useState,
+} from "react";
+
+import {
+  useRouter,
+} from "expo-router";
+
+import BottomNav
+  from "../components/BottomNav";
+
+import {
+  clearAccessToken,
+  getAcademicContext,
+  getMe,
+  CurrentUser,
+  AcademicContext,
+} from "../services/api";
 
 export default function ProfileScreen() {
   const router = useRouter();
 
+  const [user, setUser] =
+    useState<CurrentUser | null>(
+      null
+    );
+
+  const [context, setContext] =
+    useState<AcademicContext | null>(
+      null
+    );
+
+  const [loading, setLoading] =
+    useState(true);
+
+  const [error, setError] =
+    useState("");
+
+  useEffect(() => {
+    loadProfile();
+  }, []);
+
+  async function loadProfile() {
+    try {
+      setLoading(true);
+      setError("");
+
+      const me = await getMe();
+
+      const data =
+        await getAcademicContext(
+          me.lecturer_id
+        );
+
+      setUser(me);
+      setContext(data);
+    } catch (err) {
+      console.error(err);
+
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Couldn't load profile."
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function signOut() {
+    clearAccessToken();
+
+    router.replace("/" as any);
+  }
+
+  if (loading) {
+    return (
+      <View style={styles.screen}>
+        <View style={styles.center}>
+          <ActivityIndicator
+            color="#6FC5FF"
+          />
+
+          <Text style={styles.stateText}>
+            Loading profile...
+          </Text>
+        </View>
+      </View>
+    );
+  }
+
+  if (error || !context || !user) {
+    return (
+      <View style={styles.screen}>
+        <View style={styles.center}>
+          <Text style={styles.errorTitle}>
+            Profile unavailable
+          </Text>
+
+          <Text style={styles.errorText}>
+            {error ||
+              "Couldn't load profile data."}
+          </Text>
+
+          <Pressable
+            style={styles.retry}
+            onPress={loadProfile}
+          >
+            <Text style={styles.retryText}>
+              Retry
+            </Text>
+          </Pressable>
+        </View>
+      </View>
+    );
+  }
+
+  const lecturer =
+    context.lecturer;
+
+  const initials =
+    lecturer.name
+      .split(" ")
+      .map(
+        (part) => part[0]
+      )
+      .join("")
+      .slice(0, 2);
+
   return (
     <View style={styles.screen}>
       <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={[
-          styles.container,
-          { paddingBottom: 120 },
-        ]}
-        showsVerticalScrollIndicator={false}
+        contentContainerStyle={
+          styles.container
+        }
+        showsVerticalScrollIndicator={
+          false
+        }
       >
-        {/* Back */}
         <Pressable
           onPress={() => router.back()}
-          style={styles.backButton}
         >
-          <Text style={styles.back}>‹</Text>
+          <Text style={styles.back}>
+            ‹
+          </Text>
         </Pressable>
 
-        {/* Profile Header */}
-        <View style={styles.profileHeader}>
+        {/* PROFILE HEADER */}
+
+        <View style={styles.header}>
           <View style={styles.avatar}>
-            <Text style={styles.avatarText}>DS</Text>
-          </View>
-
-          <Text style={styles.name}>Dr. Sharma</Text>
-
-          <Text style={styles.role}>
-            Assistant Professor
-          </Text>
-
-          <Text style={styles.department}>
-            Computer Science & Engineering
-          </Text>
-
-          <View style={styles.onlineBadge}>
-            <View style={styles.onlineDot} />
-            <Text style={styles.onlineText}>
-              Faculty account
+            <Text
+              style={styles.avatarText}
+            >
+              {initials}
             </Text>
           </View>
+
+          <Text style={styles.name}>
+            {lecturer.name}
+          </Text>
+
+          <Text style={styles.role}>
+            {lecturer.title}
+          </Text>
+
+          <Text
+            style={styles.department}
+          >
+            {lecturer.department}
+          </Text>
         </View>
 
-        {/* Stats */}
-        <View style={styles.statsCard}>
-          <Stat value="2" label="Courses" />
-          <Stat value="17" label="Posts" />
-          <Stat value="24" label="Resources" />
-          <Stat value="42" label="Connections" />
-        </View>
+        {/* ACCOUNT */}
 
-        {/* Teaching */}
+        <Section title="Account">
+          <InfoRow
+            label="Email"
+            value={user.email}
+          />
+
+          <InfoRow
+            label="Lecturer ID"
+            value={lecturer.id}
+          />
+        </Section>
+
+        {/* COURSES */}
+
         <Section title="Teaching">
           <InfoRow
+            label="Active courses"
+            value={String(
+              context.courses.length
+            )}
+          />
+
+          <InfoRow
             label="Courses"
-            value="DBMS, Artificial Intelligence"
-          />
-
-          <InfoRow
-            label="Sections"
-            value="CSE-A, CSE-B"
-          />
-
-          <InfoRow
-            label="Experience"
-            value="8 Years"
-          />
-        </Section>
-
-        {/* Research */}
-        <Section title="Research Interests">
-          <View style={styles.tagRow}>
-            <Tag text="Machine Learning" />
-            <Tag text="Computer Vision" />
-            <Tag text="Artificial Intelligence" />
-            <Tag text="Data Science" />
-          </View>
-        </Section>
-
-        {/* Community */}
-        <Section title="Community Activity">
-          <InfoRow
-            label="Posts"
-            value="17"
-          />
-
-          <InfoRow
-            label="Resources shared"
-            value="24"
-          />
-
-          <InfoRow
-            label="Connections"
-            value="42"
+            value={
+              context.courses.length > 0
+                ? context.courses
+                    .map(
+                      (course) =>
+                        course.short_name ||
+                        course.code
+                    )
+                    .join(", ")
+                : "No active courses"
+            }
           />
         </Section>
 
-        {/* Settings */}
-        <Section title="Account">
-          <Pressable style={styles.actionRow}>
-            <View>
-              <Text style={styles.actionTitle}>
-                Edit Profile
-              </Text>
+        {/* RESEARCH */}
 
-              <Text style={styles.actionSubtitle}>
-                Update your faculty information
-              </Text>
-            </View>
+        <Section title="Academic Overview">
+          <InfoRow
+            label="Current date"
+            value={
+              context.current_date
+            }
+          />
 
-            <Text style={styles.arrow}>›</Text>
-          </Pressable>
+          <InfoRow
+            label="Upcoming class"
+            value={
+              context.next_class
+                ? context.next_class
+                    .subject
+                : "No upcoming class"
+            }
+          />
 
-          <Pressable style={styles.actionRow}>
-            <View>
-              <Text style={styles.actionTitle}>
-                Notification Preferences
-              </Text>
+          <InfoRow
+            label="Alerts"
+            value={String(
+              context.alerts.length
+            )}
+          />
+        </Section>
 
-              <Text style={styles.actionSubtitle}>
-                Manage class reminders and alerts
-              </Text>
-            </View>
+        {/* SIGN OUT */}
 
-            <Text style={styles.arrow}>›</Text>
-          </Pressable>
-
-          <Pressable
-            style={styles.actionRow}
-            onPress={() => router.replace("/")}
+        <Pressable
+          style={styles.logout}
+          onPress={signOut}
+        >
+          <Text
+            style={styles.logoutTitle}
           >
-            <View>
-              <Text style={styles.logoutTitle}>
-                Sign Out
-              </Text>
+            Sign Out
+          </Text>
 
-              <Text style={styles.actionSubtitle}>
-                Return to the login screen
-              </Text>
-            </View>
+          <Text
+            style={styles.logoutSubtitle}
+          >
+            Return to the login screen
+          </Text>
+        </Pressable>
 
-            <Text style={styles.arrow}>›</Text>
-          </Pressable>
-        </Section>
-
-        <View style={{ height: 30 }} />
+        <View
+          style={{ height: 110 }}
+        />
       </ScrollView>
 
       <BottomNav />
-    </View>
-  );
-}
-
-function Stat({
-  value,
-  label,
-}: {
-  value: string;
-  label: string;
-}) {
-  return (
-    <View style={styles.stat}>
-      <Text style={styles.statValue}>{value}</Text>
-      <Text style={styles.statLabel}>{label}</Text>
     </View>
   );
 }
@@ -178,11 +283,15 @@ function Section({
   children,
 }: {
   title: string;
-  children: ReactNode;
+  children: React.ReactNode;
 }) {
   return (
     <View style={styles.section}>
-      <Text style={styles.sectionTitle}>{title}</Text>
+      <Text
+        style={styles.sectionTitle}
+      >
+        {title}
+      </Text>
 
       <View style={styles.card}>
         {children}
@@ -200,222 +309,167 @@ function InfoRow({
 }) {
   return (
     <View style={styles.infoRow}>
-      <Text style={styles.label}>{label}</Text>
+      <Text style={styles.label}>
+        {label}
+      </Text>
 
-      <Text style={styles.value}>{value}</Text>
+      <Text style={styles.value}>
+        {value}
+      </Text>
     </View>
   );
 }
 
-function Tag({ text }: { text: string }) {
-  return (
-    <View style={styles.tag}>
-      <Text style={styles.tagText}>{text}</Text>
-    </View>
-  );
-}
+const styles =
+  StyleSheet.create({
+    screen: {
+      flex: 1,
+      backgroundColor: "#0B0D10",
+    },
 
-const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: "#0B0D10",
-  },
+    container: {
+      paddingHorizontal: 20,
+      paddingTop: 55,
+    },
 
-  scroll: {
-    flex: 1,
-  },
+    center: {
+      flex: 1,
+      alignItems: "center",
+      justifyContent: "center",
+      padding: 25,
+    },
 
-  container: {
-    paddingHorizontal: 20,
-    paddingTop: 55,
-  },
+    stateText: {
+      color: "#7E8794",
+      marginTop: 10,
+    },
 
-  backButton: {
-    alignSelf: "flex-start",
-    paddingVertical: 2,
-    paddingRight: 15,
-  },
+    errorTitle: {
+      color: "#FFFFFF",
+      fontSize: 20,
+      fontWeight: "700",
+    },
 
-  back: {
-    color: "#FFFFFF",
-    fontSize: 38,
-    lineHeight: 38,
-  },
+    errorText: {
+      color: "#7E8794",
+      textAlign: "center",
+      marginTop: 8,
+    },
 
-  profileHeader: {
-    alignItems: "center",
-    marginBottom: 28,
-  },
+    retry: {
+      backgroundColor: "#FFFFFF",
+      paddingHorizontal: 18,
+      paddingVertical: 10,
+      borderRadius: 10,
+      marginTop: 20,
+    },
 
-  avatar: {
-    width: 92,
-    height: 92,
-    borderRadius: 46,
-    backgroundColor: "#252A33",
-    justifyContent: "center",
-    alignItems: "center",
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: "#303740",
-  },
+    retryText: {
+      color: "#0B0D10",
+      fontWeight: "700",
+    },
 
-  avatarText: {
-    color: "#FFFFFF",
-    fontSize: 28,
-    fontWeight: "700",
-  },
+    back: {
+      color: "#FFFFFF",
+      fontSize: 38,
+      lineHeight: 38,
+    },
 
-  name: {
-    color: "#FFFFFF",
-    fontSize: 27,
-    fontWeight: "700",
-  },
+    header: {
+      alignItems: "center",
+      marginTop: 12,
+      marginBottom: 30,
+    },
 
-  role: {
-    color: "#C2C9D1",
-    fontSize: 14,
-    marginTop: 6,
-  },
+    avatar: {
+      width: 88,
+      height: 88,
+      borderRadius: 44,
+      backgroundColor: "#252A33",
+      justifyContent: "center",
+      alignItems: "center",
+      borderWidth: 1,
+      borderColor: "#303740",
+    },
 
-  department: {
-    color: "#77828F",
-    fontSize: 12,
-    textAlign: "center",
-    marginTop: 3,
-  },
+    avatarText: {
+      color: "#FFFFFF",
+      fontSize: 26,
+      fontWeight: "700",
+    },
 
-  onlineBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#15231E",
-    paddingVertical: 7,
-    paddingHorizontal: 10,
-    borderRadius: 10,
-    marginTop: 12,
-  },
+    name: {
+      color: "#FFFFFF",
+      fontSize: 26,
+      fontWeight: "700",
+      marginTop: 15,
+    },
 
-  onlineDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-    backgroundColor: "#72D6A0",
-    marginRight: 7,
-  },
+    role: {
+      color: "#6FC5FF",
+      fontSize: 13,
+      marginTop: 5,
+    },
 
-  onlineText: {
-    color: "#72D6A0",
-    fontSize: 11,
-    fontWeight: "600",
-  },
+    department: {
+      color: "#77828F",
+      fontSize: 11,
+      marginTop: 4,
+      textAlign: "center",
+    },
 
-  statsCard: {
-    backgroundColor: "#171A20",
-    borderRadius: 19,
-    paddingVertical: 19,
-    flexDirection: "row",
-    justifyContent: "space-around",
-    marginBottom: 28,
-  },
+    section: {
+      marginBottom: 24,
+    },
 
-  stat: {
-    alignItems: "center",
-  },
+    sectionTitle: {
+      color: "#FFFFFF",
+      fontSize: 18,
+      fontWeight: "700",
+      marginBottom: 10,
+    },
 
-  statValue: {
-    color: "#FFFFFF",
-    fontSize: 19,
-    fontWeight: "700",
-  },
+    card: {
+      backgroundColor: "#171A20",
+      borderRadius: 18,
+      paddingHorizontal: 17,
+    },
 
-  statLabel: {
-    color: "#737D89",
-    fontSize: 10,
-    marginTop: 4,
-  },
+    infoRow: {
+      paddingVertical: 16,
+      borderBottomWidth: 1,
+      borderBottomColor: "#252A31",
+    },
 
-  section: {
-    marginBottom: 25,
-  },
+    label: {
+      color: "#717C88",
+      fontSize: 10,
+      marginBottom: 5,
+    },
 
-  sectionTitle: {
-    color: "#FFFFFF",
-    fontSize: 18,
-    fontWeight: "700",
-    marginBottom: 10,
-  },
+    value: {
+      color: "#E6EBF0",
+      fontSize: 13,
+      lineHeight: 19,
+    },
 
-  card: {
-    backgroundColor: "#171A20",
-    borderRadius: 18,
-    paddingHorizontal: 17,
-  },
+    logout: {
+      backgroundColor: "#21191A",
+      borderWidth: 1,
+      borderColor: "#3A2729",
+      borderRadius: 17,
+      padding: 17,
+    },
 
-  infoRow: {
-    paddingVertical: 17,
-    borderBottomWidth: 1,
-    borderBottomColor: "#252A31",
-  },
+    logoutTitle: {
+      color: "#FF8E8E",
+      fontSize: 14,
+      fontWeight: "700",
+    },
 
-  label: {
-    color: "#7E8794",
-    fontSize: 12,
-    marginBottom: 4,
-  },
-
-  value: {
-    color: "#E8ECF1",
-    fontSize: 15,
-  },
-
-  tagRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-    paddingVertical: 17,
-  },
-
-  tag: {
-    backgroundColor: "#232832",
-    borderRadius: 12,
-    paddingHorizontal: 13,
-    paddingVertical: 9,
-  },
-
-  tagText: {
-    color: "#AEB7C2",
-    fontSize: 12,
-  },
-
-  actionRow: {
-    minHeight: 70,
-    paddingVertical: 15,
-    borderBottomWidth: 1,
-    borderBottomColor: "#252A31",
-    flexDirection: "row",
-    alignItems: "center",
-  },
-
-  actionTitle: {
-    color: "#E8ECF1",
-    fontSize: 14,
-    fontWeight: "600",
-  },
-
-  logoutTitle: {
-    color: "#FF8E8E",
-    fontSize: 14,
-    fontWeight: "600",
-  },
-
-  actionSubtitle: {
-    color: "#707B87",
-    fontSize: 11,
-    marginTop: 4,
-  },
-
-  arrow: {
-    color: "#68727D",
-    fontSize: 27,
-    marginLeft: "auto",
-  },
-});
+    logoutSubtitle: {
+      color: "#816B6D",
+      fontSize: 10,
+      marginTop: 4,
+    },
+  });

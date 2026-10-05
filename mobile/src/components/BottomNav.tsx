@@ -1,6 +1,14 @@
-import { Pressable, StyleSheet, Text, View } from "react-native";
-import { usePathname, useRouter } from "expo-router";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import {
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
+
+import {
+  usePathname,
+  useRouter,
+} from "expo-router";
 
 const tabs = [
   {
@@ -33,23 +41,23 @@ const tabs = [
 export default function BottomNav() {
   const router = useRouter();
   const pathname = usePathname();
-  const insets = useSafeAreaInsets();
 
   return (
-    <View
-      style={[
-        styles.wrapper,
-        { paddingBottom: Math.max(insets.bottom, 10) },
-      ]}
-    >
+    <View style={styles.wrapper}>
       {tabs.map((tab) => {
-        const active = pathname === tab.route;
+        const active =
+          pathname === tab.route ||
+          pathname.startsWith(
+            `${tab.route}/`
+          );
 
         return (
           <Pressable
             key={tab.route}
             style={styles.tab}
-            onPress={() => router.push(tab.route as any)}
+            onPress={() =>
+              router.replace(tab.route as any)
+            }
           >
             <Text
               style={[
@@ -81,11 +89,16 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
+
     backgroundColor: "#111419",
+
     borderTopWidth: 1,
     borderTopColor: "#20242B",
+
     flexDirection: "row",
+
     paddingTop: 10,
+    paddingBottom: 15,
   },
 
   tab: {

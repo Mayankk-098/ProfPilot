@@ -1,6 +1,5 @@
-import BottomNav from "../components/BottomNav";
-import { useRouter } from "expo-router";
 import {
+  ActivityIndicator,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -8,84 +7,220 @@ import {
   View,
 } from "react-native";
 
+import {
+  useEffect,
+  useState,
+} from "react";
+
+import {
+  useRouter,
+} from "expo-router";
+
+import BottomNav
+  from "../components/BottomNav";
+
+import {
+  getAcademicContext,
+  getMe,
+  AcademicContext,
+} from "../services/api";
+
 export default function HomeScreen() {
   const router = useRouter();
+
+  const [context, setContext] =
+    useState<AcademicContext | null>(
+      null
+    );
+
+  const [loading, setLoading] =
+    useState(true);
+
+  const [error, setError] =
+    useState("");
+
+  useEffect(() => {
+    loadHome();
+  }, []);
+
+  async function loadHome() {
+    try {
+      setLoading(true);
+      setError("");
+
+      const me = await getMe();
+
+      const data =
+        await getAcademicContext(
+          me.lecturer_id
+        );
+
+      setContext(data);
+    } catch (err) {
+      console.error(err);
+
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Couldn't load dashboard."
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  if (loading) {
+    return (
+      <View style={styles.screen}>
+        <View style={styles.center}>
+          <ActivityIndicator
+            size="large"
+            color="#6FC5FF"
+          />
+
+          <Text style={styles.stateText}>
+            Loading dashboard...
+          </Text>
+        </View>
+      </View>
+    );
+  }
+
+  if (error || !context) {
+    return (
+      <View style={styles.screen}>
+        <View style={styles.center}>
+          <Text style={styles.errorTitle}>
+            Dashboard unavailable
+          </Text>
+
+          <Text style={styles.errorText}>
+            {error ||
+              "No academic data found."}
+          </Text>
+
+          <Pressable
+            style={styles.retryButton}
+            onPress={loadHome}
+          >
+            <Text style={styles.retryText}>
+              Retry
+            </Text>
+          </Pressable>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.screen}>
       <ScrollView
         style={styles.scroll}
-        contentContainerStyle={[
-          styles.container,
-          { paddingBottom: 120 },
-        ]}
+        contentContainerStyle={
+          styles.container
+        }
         showsVerticalScrollIndicator={false}
       >
-        {/* Header */}
         <View style={styles.header}>
           <View>
-            <Text style={styles.greeting}>Good evening,</Text>
-            <Text style={styles.name}>Dr. Sharma 👋</Text>
+            <Text style={styles.greeting}>
+              Good evening,
+            </Text>
+
+            <Text style={styles.name}>
+              {context.lecturer.name} 👋
+            </Text>
           </View>
 
           <Pressable
             style={styles.avatar}
-            onPress={() => router.push("/profile")}
+            onPress={() =>
+              router.push("/profile")
+            }
           >
-            <Text style={styles.avatarText}>DS</Text>
+            <Text style={styles.avatarText}>
+              {context.lecturer.name
+                .split(" ")
+                .map((x) => x[0])
+                .join("")
+                .slice(0, 2)}
+            </Text>
           </Pressable>
         </View>
 
-        {/* Next Class */}
         <Pressable
-          style={styles.nextClassCard}
-          onPress={() => router.push("/schedule")}
+          style={styles.nextCard}
+          onPress={() =>
+            router.push("/schedule")
+          }
         >
-          <Text style={styles.cardLabel}>NEXT CLASS</Text>
-
-          <Text style={styles.course}>
-            Database Management Systems
+          <Text style={styles.label}>
+            NEXT CLASS
           </Text>
 
-          <Text style={styles.section}>CSE-B</Text>
+          {context.next_class ? (
+            <>
+              <Text style={styles.course}>
+                {context.next_class.subject}
+              </Text>
 
-          <View style={styles.classDetails}>
-            <Text style={styles.detail}>10:00 AM</Text>
-            <Text style={styles.dot}>•</Text>
-            <Text style={styles.detail}>Block C · Room 204</Text>
-          </View>
+              <Text style={styles.batch}>
+                {context.next_class.code
+                  ? `${context.next_class.code} · ${context.next_class.batch}`
+                  : context.next_class.batch}
+              </Text>
 
-          <View style={styles.countdown}>
-            <Text style={styles.countdownText}>
-              Starts in 27 minutes
+              <View
+                style={styles.details}
+              >
+                <Text style={styles.detail}>
+                  {context.next_class.time}{" "}
+                  {context.next_class.period}
+                </Text>
+
+                <Text style={styles.dot}>
+                  •
+                </Text>
+
+                <Text style={styles.detail}>
+                  {context.next_class.room}
+                </Text>
+              </View>
+            </>
+          ) : (
+            <Text style={styles.emptyText}>
+              No upcoming class.
             </Text>
-          </View>
+          )}
 
-          <Text style={styles.tapHint}>
+          <Text style={styles.tap}>
             Tap to view schedule →
           </Text>
         </Pressable>
 
-        {/* AI Insight */}
         <View style={styles.insightCard}>
           <Text style={styles.insightLabel}>
             PROFPILOT INSIGHT
           </Text>
 
           <Text style={styles.insightText}>
-            Your DBMS syllabus is currently{" "}
-            <Text style={styles.highlight}>
-              4 days behind
-            </Text>{" "}
-            the planned pace.
+            {context.alerts.length > 0
+              ? context.alerts[0]
+              : "No urgent academic alerts right now."}
           </Text>
 
           <Pressable
-            style={({ pressed }) => [
-              styles.aiButton,
-              pressed && styles.buttonPressed,
-            ]}
-            onPress={() => router.push("/ai")}
+            style={styles.aiButton}
+            onPress={() =>
+              router.push({
+                pathname: "/ai",
+                params: {
+                  course_id:
+                    context.selected_course
+                      ?.id || "",
+                },
+              })
+            }
           >
             <Text style={styles.aiButtonText}>
               Ask ProfPilot
@@ -93,358 +228,394 @@ export default function HomeScreen() {
           </Pressable>
         </View>
 
-        {/* Schedule */}
         <Text style={styles.sectionTitle}>
           Today's Schedule
         </Text>
 
-        <View style={styles.scheduleCard}>
-          <ScheduleRow
-            time="10:00"
-            period="AM"
-            subject="DBMS"
-            batch="CSE-B"
-          />
+        <View style={styles.schedule}>
+          {context.today_schedule.length ===
+          0 ? (
+            <Text style={styles.emptySchedule}>
+              No classes scheduled today.
+            </Text>
+          ) : (
+            context.today_schedule.map(
+              (item) => (
+                <View
+                  key={item.id}
+                  style={styles.scheduleRow}
+                >
+                  <View
+                    style={styles.timeBox}
+                  >
+                    <Text style={styles.time}>
+                      {item.time}
+                    </Text>
 
-          <ScheduleRow
-            time="12:00"
-            period="PM"
-            subject="Artificial Intelligence"
-            batch="CSE-A"
-          />
+                    <Text style={styles.period}>
+                      {item.period}
+                    </Text>
+                  </View>
 
-          <ScheduleRow
-            time="03:00"
-            period="PM"
-            subject="Faculty Meeting"
-            batch="Faculty"
-          />
+                  <View
+                    style={styles.scheduleInfo}
+                  >
+                    <Text
+                      style={
+                        styles.subject
+                      }
+                    >
+                      {item.subject}
+                    </Text>
+
+                    <Text
+                      style={styles.batch}
+                    >
+                      {item.batch}
+                    </Text>
+                  </View>
+                </View>
+              )
+            )
+          )}
         </View>
 
-        {/* Quick Actions */}
         <Text style={styles.sectionTitle}>
           Quick Actions
         </Text>
 
-        <View style={styles.quickActions}>
+        <View style={styles.grid}>
           <QuickAction
-            emoji="📚"
+            icon="📚"
             title="Courses"
-            onPress={() => router.push("/courses")}
+            onPress={() =>
+              router.push(
+                "/courses"
+              )
+            }
           />
 
           <QuickAction
-            emoji="📅"
+            icon="📅"
             title="Schedule"
-            onPress={() => router.push("/schedule")}
+            onPress={() =>
+              router.push(
+                "/schedule"
+              )
+            }
           />
 
           <QuickAction
-            emoji="✅"
+            icon="✅"
             title="Attendance"
-            onPress={() => router.push("/attendance")}
+            onPress={() =>
+              router.push(
+                "/attendance"
+              )
+            }
           />
 
           <QuickAction
-            emoji="👥"
+            icon="👥"
             title="Community"
-            onPress={() => router.push("/community")}
+            onPress={() =>
+              router.push(
+                "/community"
+              )
+            }
           />
         </View>
 
-        {/* Extra bottom space */}
-        <View style={{ height: 30 }} />
+        <View style={{ height: 100 }} />
       </ScrollView>
 
-      {/* ProfPilot Bottom Navigation */}
       <BottomNav />
     </View>
   );
 }
 
-function ScheduleRow({
-  time,
-  period,
-  subject,
-  batch,
-}: {
-  time: string;
-  period: string;
-  subject: string;
-  batch: string;
-}) {
-  return (
-    <View style={styles.scheduleRow}>
-      <View style={styles.timeContainer}>
-        <Text style={styles.time}>{time}</Text>
-        <Text style={styles.period}>{period}</Text>
-      </View>
-
-      <View style={styles.scheduleInfo}>
-        <Text style={styles.subject}>{subject}</Text>
-        <Text style={styles.batch}>{batch}</Text>
-      </View>
-    </View>
-  );
-}
-
 function QuickAction({
-  emoji,
+  icon,
   title,
   onPress,
 }: {
-  emoji: string;
+  icon: string;
   title: string;
   onPress: () => void;
 }) {
   return (
     <Pressable
       style={({ pressed }) => [
-        styles.quickAction,
-        pressed && styles.buttonPressed,
+        styles.action,
+        pressed &&
+          styles.buttonPressed,
       ]}
       onPress={onPress}
     >
-      <Text style={styles.quickEmoji}>{emoji}</Text>
-      <Text style={styles.quickTitle}>{title}</Text>
+      <Text style={styles.actionIcon}>
+        {icon}
+      </Text>
+
+      <Text style={styles.actionTitle}>
+        {title}
+      </Text>
     </Pressable>
   );
 }
 
-const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: "#0B0D10",
-  },
+const styles =
+  StyleSheet.create({
+    screen: {
+      flex: 1,
+      backgroundColor: "#0B0D10",
+    },
 
-  scroll: {
-    flex: 1,
-  },
+    scroll: {
+      flex: 1,
+    },
 
-  container: {
-    paddingHorizontal: 20,
-    paddingTop: 60,
-  },
+    container: {
+      padding: 20,
+      paddingTop: 60,
+    },
 
-  header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 28,
-  },
+    center: {
+      flex: 1,
+      justifyContent: "center",
+      alignItems: "center",
+      padding: 25,
+    },
 
-  greeting: {
-    color: "#8B919C",
-    fontSize: 15,
-  },
+    stateText: {
+      color: "#7E8794",
+      marginTop: 12,
+    },
 
-  name: {
-    color: "#FFFFFF",
-    fontSize: 25,
-    fontWeight: "700",
-    marginTop: 3,
-  },
+    errorTitle: {
+      color: "#FFFFFF",
+      fontSize: 20,
+      fontWeight: "700",
+    },
 
-  avatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: "#252A33",
-    justifyContent: "center",
-    alignItems: "center",
-  },
+    errorText: {
+      color: "#7E8794",
+      textAlign: "center",
+      marginTop: 10,
+    },
 
-  avatarText: {
-    color: "#FFFFFF",
-    fontWeight: "700",
-    fontSize: 15,
-  },
+    retryButton: {
+      backgroundColor: "#FFFFFF",
+      paddingHorizontal: 18,
+      paddingVertical: 10,
+      borderRadius: 10,
+      marginTop: 20,
+    },
 
-  nextClassCard: {
-    backgroundColor: "#171A20",
-    borderRadius: 22,
-    padding: 20,
-    marginBottom: 16,
-  },
+    retryText: {
+      color: "#0B0D10",
+      fontWeight: "700",
+    },
 
-  cardLabel: {
-    color: "#7E8794",
-    fontSize: 12,
-    fontWeight: "700",
-    letterSpacing: 1.2,
-  },
+    header: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginBottom: 25,
+    },
 
-  course: {
-    color: "#FFFFFF",
-    fontSize: 22,
-    fontWeight: "700",
-    marginTop: 10,
-  },
+    greeting: {
+      color: "#8B919C",
+      fontSize: 15,
+    },
 
-  section: {
-    color: "#9DA6B2",
-    fontSize: 14,
-    marginTop: 4,
-  },
+    name: {
+      color: "#FFFFFF",
+      fontSize: 25,
+      fontWeight: "700",
+      marginTop: 3,
+    },
 
-  classDetails: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginTop: 16,
-  },
+    avatar: {
+      width: 48,
+      height: 48,
+      borderRadius: 24,
+      backgroundColor: "#252A33",
+      alignItems: "center",
+      justifyContent: "center",
+    },
 
-  detail: {
-    color: "#D8DCE2",
-    fontSize: 14,
-  },
+    avatarText: {
+      color: "#FFFFFF",
+      fontWeight: "700",
+    },
 
-  dot: {
-    color: "#5F6772",
-    marginHorizontal: 8,
-  },
+    nextCard: {
+      backgroundColor: "#171A20",
+      borderRadius: 22,
+      padding: 20,
+      marginBottom: 16,
+    },
 
-  countdown: {
-    marginTop: 18,
-    alignSelf: "flex-start",
-    backgroundColor: "#232832",
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 10,
-  },
+    label: {
+      color: "#6FC5FF",
+      fontSize: 11,
+      fontWeight: "700",
+      letterSpacing: 1.2,
+    },
 
-  countdownText: {
-    color: "#FFFFFF",
-    fontSize: 13,
-    fontWeight: "600",
-  },
+    course: {
+      color: "#FFFFFF",
+      fontSize: 21,
+      fontWeight: "700",
+      marginTop: 10,
+    },
 
-  tapHint: {
-    color: "#65707E",
-    fontSize: 12,
-    marginTop: 12,
-  },
+    batch: {
+      color: "#8C97A3",
+      fontSize: 12,
+      marginTop: 5,
+    },
 
-  insightCard: {
-    backgroundColor: "#121820",
-    borderRadius: 20,
-    padding: 20,
-    marginBottom: 28,
-  },
+    details: {
+      flexDirection: "row",
+      alignItems: "center",
+      marginTop: 16,
+    },
 
-  insightLabel: {
-    color: "#6FC5FF",
-    fontSize: 12,
-    fontWeight: "700",
-    letterSpacing: 1,
-  },
+    detail: {
+      color: "#D8DCE2",
+      fontSize: 14,
+    },
 
-  insightText: {
-    color: "#E7EBF0",
-    fontSize: 16,
-    lineHeight: 24,
-    marginTop: 10,
-  },
+    dot: {
+      color: "#5F6772",
+      marginHorizontal: 8,
+    },
 
-  highlight: {
-    color: "#6FC5FF",
-    fontWeight: "700",
-  },
+    tap: {
+      color: "#65707E",
+      fontSize: 11,
+      marginTop: 14,
+    },
 
-  aiButton: {
-    marginTop: 18,
-    backgroundColor: "#FFFFFF",
-    borderRadius: 12,
-    paddingVertical: 13,
-    alignItems: "center",
-  },
+    insightCard: {
+      backgroundColor: "#121820",
+      borderRadius: 20,
+      padding: 20,
+      marginBottom: 28,
+    },
 
-  buttonPressed: {
-    opacity: 0.7,
-    transform: [{ scale: 0.98 }],
-  },
+    insightLabel: {
+      color: "#6FC5FF",
+      fontSize: 11,
+      fontWeight: "700",
+      letterSpacing: 1,
+    },
 
-  aiButtonText: {
-    color: "#0B0D10",
-    fontWeight: "700",
-    fontSize: 14,
-  },
+    insightText: {
+      color: "#E7EBF0",
+      fontSize: 15,
+      lineHeight: 23,
+      marginTop: 10,
+    },
 
-  sectionTitle: {
-    color: "#FFFFFF",
-    fontSize: 18,
-    fontWeight: "700",
-    marginBottom: 12,
-  },
+    aiButton: {
+      marginTop: 17,
+      backgroundColor: "#FFFFFF",
+      borderRadius: 12,
+      paddingVertical: 13,
+      alignItems: "center",
+    },
 
-  scheduleCard: {
-    backgroundColor: "#171A20",
-    borderRadius: 20,
-    paddingHorizontal: 18,
-    marginBottom: 28,
-  },
+    aiButtonText: {
+      color: "#0B0D10",
+      fontWeight: "700",
+    },
 
-  scheduleRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 17,
-    borderBottomWidth: 1,
-    borderBottomColor: "#252A31",
-  },
+    sectionTitle: {
+      color: "#FFFFFF",
+      fontSize: 18,
+      fontWeight: "700",
+      marginBottom: 12,
+    },
 
-  timeContainer: {
-    width: 65,
-  },
+    schedule: {
+      backgroundColor: "#171A20",
+      borderRadius: 20,
+      paddingHorizontal: 18,
+      marginBottom: 28,
+    },
 
-  time: {
-    color: "#FFFFFF",
-    fontSize: 16,
-    fontWeight: "700",
-  },
+    scheduleRow: {
+      flexDirection: "row",
+      paddingVertical: 16,
+      borderBottomWidth: 1,
+      borderBottomColor: "#252A31",
+    },
 
-  period: {
-    color: "#7E8794",
-    fontSize: 11,
-    marginTop: 2,
-  },
+    timeBox: {
+      width: 65,
+    },
 
-  scheduleInfo: {
-    flex: 1,
-  },
+    time: {
+      color: "#FFFFFF",
+      fontSize: 15,
+      fontWeight: "700",
+    },
 
-  subject: {
-    color: "#E7EBF0",
-    fontSize: 15,
-    fontWeight: "600",
-  },
+    period: {
+      color: "#69747F",
+      fontSize: 10,
+    },
 
-  batch: {
-    color: "#7E8794",
-    fontSize: 12,
-    marginTop: 4,
-  },
+    scheduleInfo: {
+      flex: 1,
+    },
 
-  quickActions: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    justifyContent: "space-between",
-  },
+    subject: {
+      color: "#E7EBF0",
+      fontSize: 14,
+      fontWeight: "600",
+    },
 
-  quickAction: {
-    width: "48%",
-    backgroundColor: "#171A20",
-    borderRadius: 18,
-    padding: 18,
-    marginBottom: 12,
-  },
+    emptyText: {
+      color: "#7E8794",
+      marginTop: 12,
+    },
 
-  quickEmoji: {
-    fontSize: 23,
-    marginBottom: 10,
-  },
+    emptySchedule: {
+      color: "#7E8794",
+      paddingVertical: 20,
+    },
 
-  quickTitle: {
-    color: "#FFFFFF",
-    fontSize: 14,
-    fontWeight: "600",
-  },
-});
+    grid: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      justifyContent: "space-between",
+    },
+
+    action: {
+      width: "48%",
+      backgroundColor: "#171A20",
+      borderRadius: 17,
+      padding: 18,
+      marginBottom: 12,
+    },
+
+    actionIcon: {
+      fontSize: 22,
+      marginBottom: 10,
+    },
+
+    actionTitle: {
+      color: "#FFFFFF",
+      fontWeight: "600",
+    },
+
+    buttonPressed: {
+      opacity: 0.7,
+      transform: [
+        { scale: 0.98 },
+      ],
+    },
+  });

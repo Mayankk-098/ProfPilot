@@ -7,10 +7,18 @@ import {
   View,
 } from "react-native";
 
-import { useRouter } from "expo-router";
-import { useEffect, useState } from "react";
+import {
+  useEffect,
+  useState,
+} from "react";
 
-import BottomNav from "../components/BottomNav";
+import {
+  useRouter,
+} from "expo-router";
+
+import BottomNav
+  from "../components/BottomNav";
+
 import {
   getSchedule,
   ScheduleItem,
@@ -19,9 +27,14 @@ import {
 export default function ScheduleScreen() {
   const router = useRouter();
 
-  const [schedule, setSchedule] = useState<ScheduleItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const [schedule, setSchedule] =
+    useState<ScheduleItem[]>([]);
+
+  const [loading, setLoading] =
+    useState(true);
+
+  const [error, setError] =
+    useState("");
 
   useEffect(() => {
     loadSchedule();
@@ -32,14 +45,17 @@ export default function ScheduleScreen() {
       setLoading(true);
       setError("");
 
-      const data = await getSchedule();
+      const data =
+        await getSchedule();
 
       setSchedule(data);
     } catch (err) {
       console.error(err);
 
       setError(
-        "Couldn't load your schedule. Make sure the ProfPilot server is running."
+        err instanceof Error
+          ? err.message
+          : "Couldn't load schedule."
       );
     } finally {
       setLoading(false);
@@ -49,18 +65,18 @@ export default function ScheduleScreen() {
   return (
     <View style={styles.screen}>
       <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={[
-          styles.container,
-          { paddingBottom: 120 },
-        ]}
+        contentContainerStyle={
+          styles.container
+        }
         showsVerticalScrollIndicator={false}
       >
         <Pressable
           onPress={() => router.back()}
           style={styles.backButton}
         >
-          <Text style={styles.back}>‹</Text>
+          <Text style={styles.back}>
+            ‹
+          </Text>
         </Pressable>
 
         <Text style={styles.title}>
@@ -83,7 +99,7 @@ export default function ScheduleScreen() {
           </View>
         )}
 
-        {!loading && error !== "" && (
+        {!loading && error && (
           <View style={styles.stateCard}>
             <Text style={styles.errorText}>
               {error}
@@ -101,7 +117,22 @@ export default function ScheduleScreen() {
         )}
 
         {!loading &&
-          error === "" &&
+          !error &&
+          schedule.length === 0 && (
+            <View style={styles.stateCard}>
+              <Text style={styles.emptyTitle}>
+                No classes scheduled
+              </Text>
+
+              <Text style={styles.stateText}>
+                There are no schedule items available
+                for today.
+              </Text>
+            </View>
+          )}
+
+        {!loading &&
+          !error &&
           schedule.map((item) => (
             <ScheduleCard
               key={item.id}
@@ -109,15 +140,9 @@ export default function ScheduleScreen() {
             />
           ))}
 
-        {!loading &&
-          error === "" &&
-          schedule.length === 0 && (
-            <View style={styles.stateCard}>
-              <Text style={styles.stateText}>
-                No classes scheduled.
-              </Text>
-            </View>
-          )}
+        <View
+          style={{ height: 110 }}
+        />
       </ScrollView>
 
       <BottomNav />
@@ -130,29 +155,38 @@ function ScheduleCard({
 }: {
   item: ScheduleItem;
 }) {
-  const isMeeting = item.item_type === "meeting";
+  const isMeeting =
+    item.item_type ===
+    "meeting";
 
   return (
     <View
       style={[
         styles.card,
-        isMeeting && styles.meetingCard,
+        isMeeting &&
+          styles.meetingCard,
       ]}
     >
       <View style={styles.timeBox}>
         <Text style={styles.time}>
-          {item.time}
+          {item.time ||
+            item.start_time ||
+            "--"}
         </Text>
 
-        <Text style={styles.period}>
-          {item.period}
-        </Text>
+        {item.period && (
+          <Text style={styles.period}>
+            {item.period}
+          </Text>
+        )}
       </View>
 
       <View style={styles.info}>
-        <View style={styles.typeBadge}>
-          <Text style={styles.typeText}>
-            {isMeeting ? "MEETING" : "CLASS"}
+        <View style={styles.badge}>
+          <Text style={styles.badgeText}>
+            {isMeeting
+              ? "MEETING"
+              : "CLASS"}
           </Text>
         </View>
 
@@ -160,167 +194,182 @@ function ScheduleCard({
           {item.subject}
         </Text>
 
-        {item.code && (
-          <Text style={styles.code}>
-            {item.code} · {item.batch}
-          </Text>
-        )}
-
-        {!item.code && (
-          <Text style={styles.code}>
-            {item.batch}
-          </Text>
-        )}
+        <Text style={styles.meta}>
+          {item.code
+            ? `${item.code} · ${item.batch}`
+            : item.batch}
+        </Text>
 
         <Text style={styles.room}>
-          {item.room}
+          {item.room ||
+            "Room not assigned"}
         </Text>
+
+        {item.status &&
+          item.status !==
+            "scheduled" && (
+            <Text style={styles.status}>
+              {item.status.toUpperCase()}
+            </Text>
+          )}
       </View>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: "#0B0D10",
-  },
+const styles =
+  StyleSheet.create({
+    screen: {
+      flex: 1,
+      backgroundColor: "#0B0D10",
+    },
 
-  scroll: {
-    flex: 1,
-  },
+    container: {
+      padding: 20,
+      paddingTop: 55,
+    },
 
-  container: {
-    paddingHorizontal: 20,
-    paddingTop: 55,
-  },
+    backButton: {
+      alignSelf: "flex-start",
+      paddingRight: 15,
+    },
 
-  backButton: {
-    alignSelf: "flex-start",
-    paddingRight: 15,
-  },
+    back: {
+      color: "#FFFFFF",
+      fontSize: 38,
+      lineHeight: 38,
+    },
 
-  back: {
-    color: "#FFFFFF",
-    fontSize: 38,
-    lineHeight: 38,
-  },
+    title: {
+      color: "#FFFFFF",
+      fontSize: 28,
+      fontWeight: "700",
+      marginTop: 8,
+    },
 
-  title: {
-    color: "#FFFFFF",
-    fontSize: 28,
-    fontWeight: "700",
-    marginTop: 8,
-  },
+    subtitle: {
+      color: "#7E8794",
+      fontSize: 14,
+      marginTop: 5,
+      marginBottom: 25,
+    },
 
-  subtitle: {
-    color: "#7E8794",
-    fontSize: 14,
-    marginTop: 5,
-    marginBottom: 28,
-  },
+    stateCard: {
+      backgroundColor: "#171A20",
+      borderRadius: 18,
+      padding: 20,
+      alignItems: "center",
+      marginBottom: 14,
+    },
 
-  stateCard: {
-    backgroundColor: "#171A20",
-    borderRadius: 18,
-    padding: 20,
-    alignItems: "center",
-  },
+    stateText: {
+      color: "#7E8794",
+      fontSize: 12,
+      textAlign: "center",
+      marginTop: 9,
+    },
 
-  stateText: {
-    color: "#7E8794",
-    fontSize: 13,
-    marginTop: 10,
-  },
+    emptyTitle: {
+      color: "#FFFFFF",
+      fontSize: 15,
+      fontWeight: "700",
+    },
 
-  errorText: {
-    color: "#FF9B9B",
-    fontSize: 13,
-    textAlign: "center",
-    lineHeight: 19,
-  },
+    errorText: {
+      color: "#FF9B9B",
+      fontSize: 12,
+      lineHeight: 18,
+      textAlign: "center",
+    },
 
-  retryButton: {
-    backgroundColor: "#FFFFFF",
-    paddingHorizontal: 16,
-    paddingVertical: 9,
-    borderRadius: 10,
-    marginTop: 14,
-  },
+    retryButton: {
+      backgroundColor: "#FFFFFF",
+      paddingHorizontal: 17,
+      paddingVertical: 9,
+      borderRadius: 10,
+      marginTop: 15,
+    },
 
-  retryText: {
-    color: "#0B0D10",
-    fontSize: 12,
-    fontWeight: "700",
-  },
+    retryText: {
+      color: "#0B0D10",
+      fontSize: 12,
+      fontWeight: "700",
+    },
 
-  card: {
-    backgroundColor: "#171A20",
-    borderRadius: 20,
-    padding: 18,
-    flexDirection: "row",
-    marginBottom: 12,
-  },
+    card: {
+      backgroundColor: "#171A20",
+      borderRadius: 20,
+      padding: 18,
+      flexDirection: "row",
+      marginBottom: 12,
+    },
 
-  meetingCard: {
-    backgroundColor: "#141B20",
-    borderWidth: 1,
-    borderColor: "#25313A",
-  },
+    meetingCard: {
+      borderWidth: 1,
+      borderColor: "#29343D",
+      backgroundColor: "#141B20",
+    },
 
-  timeBox: {
-    width: 68,
-    paddingTop: 2,
-  },
+    timeBox: {
+      width: 70,
+      paddingTop: 2,
+    },
 
-  time: {
-    color: "#FFFFFF",
-    fontSize: 17,
-    fontWeight: "700",
-  },
+    time: {
+      color: "#FFFFFF",
+      fontSize: 16,
+      fontWeight: "700",
+    },
 
-  period: {
-    color: "#69747F",
-    fontSize: 10,
-    marginTop: 2,
-  },
+    period: {
+      color: "#69747F",
+      fontSize: 10,
+      marginTop: 2,
+    },
 
-  info: {
-    flex: 1,
-  },
+    info: {
+      flex: 1,
+    },
 
-  typeBadge: {
-    alignSelf: "flex-start",
-    backgroundColor: "#232832",
-    borderRadius: 7,
-    paddingHorizontal: 7,
-    paddingVertical: 4,
-    marginBottom: 8,
-  },
+    badge: {
+      alignSelf: "flex-start",
+      backgroundColor: "#232832",
+      borderRadius: 7,
+      paddingHorizontal: 7,
+      paddingVertical: 4,
+      marginBottom: 8,
+    },
 
-  typeText: {
-    color: "#6FC5FF",
-    fontSize: 8,
-    fontWeight: "800",
-    letterSpacing: 0.8,
-  },
+    badgeText: {
+      color: "#6FC5FF",
+      fontSize: 8,
+      fontWeight: "800",
+      letterSpacing: 0.7,
+    },
 
-  subject: {
-    color: "#FFFFFF",
-    fontSize: 17,
-    lineHeight: 22,
-    fontWeight: "700",
-  },
+    subject: {
+      color: "#FFFFFF",
+      fontSize: 17,
+      fontWeight: "700",
+      lineHeight: 22,
+    },
 
-  code: {
-    color: "#8A95A1",
-    fontSize: 12,
-    marginTop: 5,
-  },
+    meta: {
+      color: "#8A95A1",
+      fontSize: 11,
+      marginTop: 5,
+    },
 
-  room: {
-    color: "#606B77",
-    fontSize: 11,
-    marginTop: 11,
-  },
-});
+    room: {
+      color: "#606B77",
+      fontSize: 10,
+      marginTop: 10,
+    },
+
+    status: {
+      color: "#FFB86B",
+      fontSize: 9,
+      fontWeight: "700",
+      marginTop: 8,
+    },
+  });

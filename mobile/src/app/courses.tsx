@@ -1,10 +1,5 @@
-import BottomNav from "../components/BottomNav";
 import {
-  getCourses,
-  CourseSummary,
-} from "../services/api";
-
-import {
+  ActivityIndicator,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -12,15 +7,33 @@ import {
   View,
 } from "react-native";
 
-import { useRouter } from "expo-router";
-import { useEffect, useState } from "react";
+import {
+  useEffect,
+  useState,
+} from "react";
+
+import {
+  useRouter,
+} from "expo-router";
+
+import BottomNav from "../components/BottomNav";
+
+import {
+  getCourses,
+  CourseSummary,
+} from "../services/api";
 
 export default function CoursesScreen() {
   const router = useRouter();
 
-  const [courses, setCourses] = useState<CourseSummary[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const [courses, setCourses] =
+    useState<CourseSummary[]>([]);
+
+  const [loading, setLoading] =
+    useState(true);
+
+  const [error, setError] =
+    useState("");
 
   useEffect(() => {
     loadCourses();
@@ -31,105 +44,171 @@ export default function CoursesScreen() {
       setLoading(true);
       setError("");
 
-      const data = await getCourses();
+      const data =
+        await getCourses();
 
       setCourses(data);
     } catch (err) {
       console.error(err);
 
       setError(
-        "Couldn't load courses. Make sure the ProfPilot server is running."
+        err instanceof Error
+          ? err.message
+          : "Couldn't load courses."
       );
     } finally {
       setLoading(false);
     }
   }
 
+  function openCourse(
+    courseId: string
+  ) {
+    router.push({
+      pathname: "/courses/[id]" as any,
+      params: {
+        id: String(courseId),
+      },
+    });
+  }
+
   return (
     <View style={styles.screen}>
       <ScrollView
         style={styles.scroll}
-        contentContainerStyle={[
-          styles.container,
-          { paddingBottom: 120 },
-        ]}
-        showsVerticalScrollIndicator={false}
+        contentContainerStyle={
+          styles.container
+        }
+        showsVerticalScrollIndicator={
+          false
+        }
       >
-        {/* Back */}
+        {/* BACK */}
         <Pressable
           onPress={() => router.back()}
           style={styles.backButton}
         >
-          <Text style={styles.back}>‹</Text>
+          <Text style={styles.back}>
+            ‹
+          </Text>
         </Pressable>
 
-        {/* Header */}
-        <Text style={styles.title}>
-          My Courses
-        </Text>
+        {/* HEADER */}
+        <View style={styles.header}>
+          <Text style={styles.title}>
+            My Courses
+          </Text>
 
-        <Text style={styles.subtitle}>
-          Your active courses this semester
-        </Text>
+          <Text style={styles.subtitle}>
+            Your active courses this semester
+          </Text>
+        </View>
 
-        {/* Loading */}
+        {/* LOADING */}
         {loading && (
           <View style={styles.stateCard}>
+            <ActivityIndicator
+              size="small"
+              color="#6FC5FF"
+            />
+
             <Text style={styles.stateText}>
               Loading courses...
             </Text>
           </View>
         )}
 
-        {/* Error */}
-        {!loading && error !== "" && (
-          <View style={styles.stateCard}>
-            <Text style={styles.errorText}>
-              {error}
-            </Text>
-
-            <Pressable
-              style={styles.retryButton}
-              onPress={loadCourses}
+        {/* ERROR */}
+        {!loading &&
+          error !== "" && (
+            <View
+              style={styles.stateCard}
             >
-              <Text style={styles.retryText}>
-                Retry
+              <Text
+                style={styles.errorTitle}
+              >
+                Couldn't load courses
               </Text>
-            </Pressable>
-          </View>
-        )}
 
-        {/* Courses */}
+              <Text
+                style={styles.errorText}
+              >
+                {error}
+              </Text>
+
+              <Pressable
+                style={styles.retryButton}
+                onPress={loadCourses}
+              >
+                <Text
+                  style={styles.retryText}
+                >
+                  Retry
+                </Text>
+              </Pressable>
+            </View>
+          )}
+
+        {/* EMPTY */}
+        {!loading &&
+          error === "" &&
+          courses.length === 0 && (
+            <View
+              style={styles.stateCard}
+            >
+              <Text
+                style={styles.emptyTitle}
+              >
+                No courses found
+              </Text>
+
+              <Text
+                style={styles.stateText}
+              >
+                No active courses are available
+                for your faculty account.
+              </Text>
+            </View>
+          )}
+
+        {/* COURSE LIST */}
         {!loading &&
           error === "" &&
           courses.map((course) => (
-            <Course
+            <CourseCard
               key={course.id}
               course={course}
               onPress={() =>
-                router.push(
-                  `/courses/${course.id}`
-                )
+                openCourse(course.id)
               }
             />
           ))}
 
-        {/* Add course */}
-        {!loading && error === "" && (
-          <Pressable style={styles.addCourse}>
-            <Text style={styles.addIcon}>+</Text>
-
-            <View>
-              <Text style={styles.addTitle}>
-                Add a course
+        {/* INFORMATIONAL FOOTER */}
+        {!loading &&
+          error === "" &&
+          courses.length > 0 && (
+            <View
+              style={styles.footerCard}
+            >
+              <Text
+                style={styles.footerTitle}
+              >
+                Course management
               </Text>
 
-              <Text style={styles.addSubtitle}>
-                Create another teaching workspace
+              <Text
+                style={styles.footerText}
+              >
+                Courses are managed by the
+                current academic backend.
               </Text>
             </View>
-          </Pressable>
-        )}
+          )}
+
+        <View
+          style={{ height: 110 }}
+        />
       </ScrollView>
 
       <BottomNav />
@@ -137,8 +216,11 @@ export default function CoursesScreen() {
   );
 }
 
+// ==================================================
+// COURSE CARD
+// ==================================================
 
-function Course({
+function CourseCard({
   course,
   onPress,
 }: {
@@ -149,6 +231,11 @@ function Course({
     course.progress <
     course.planned_progress;
 
+  const progress = Math.min(
+    100,
+    Math.max(0, course.progress)
+  );
+
   return (
     <Pressable
       style={({ pressed }) => [
@@ -157,20 +244,31 @@ function Course({
       ]}
       onPress={onPress}
     >
+      {/* TOP */}
       <View style={styles.cardTop}>
         <View style={styles.courseIcon}>
-          <Text style={styles.courseIconText}>
-            {course.short_name}
+          <Text
+            style={styles.courseIconText}
+            numberOfLines={1}
+          >
+            {course.short_name ||
+              course.code}
           </Text>
         </View>
 
-        <View style={styles.courseMain}>
-          <Text style={styles.name}>
+        <View
+          style={styles.courseMain}
+        >
+          <Text
+            style={styles.courseName}
+            numberOfLines={2}
+          >
             {course.name}
           </Text>
 
-          <Text style={styles.code}>
-            {course.code} · {course.section}
+          <Text style={styles.courseCode}>
+            {course.code} ·{" "}
+            {course.section}
           </Text>
         </View>
 
@@ -179,27 +277,37 @@ function Course({
         </Text>
       </View>
 
-      <View style={styles.progressHeader}>
-        <Text style={styles.progressLabel}>
+      {/* PROGRESS */}
+      <View
+        style={styles.progressHeader}
+      >
+        <Text
+          style={
+            styles.progressLabel
+          }
+        >
           Syllabus progress
         </Text>
 
         <Text style={styles.progress}>
-          {course.progress}%
+          {Math.round(progress)}%
         </Text>
       </View>
 
-      <View style={styles.progressTrack}>
+      <View
+        style={styles.progressTrack}
+      >
         <View
           style={[
             styles.progressFill,
             {
-              width: `${course.progress}%`,
+              width: `${progress}%`,
             },
           ]}
         />
       </View>
 
+      {/* STATUS */}
       <View
         style={[
           styles.statusContainer,
@@ -219,7 +327,7 @@ function Course({
 
         <Text
           style={[
-            styles.status,
+            styles.statusText,
             isBehind
               ? styles.warningText
               : styles.normalText,
@@ -230,246 +338,317 @@ function Course({
             : "On schedule"}
         </Text>
       </View>
+
+      {/* FOOTER */}
+      <View style={styles.cardFooter}>
+        <Text style={styles.footerMeta}>
+          {course.total_students} students
+        </Text>
+
+        <Text style={styles.footerMeta}>
+          {course.present_today} present today
+        </Text>
+      </View>
     </Pressable>
   );
 }
 
+// ==================================================
+// STYLES
+// ==================================================
 
-const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: "#0B0D10",
-  },
+const styles =
+  StyleSheet.create({
+    screen: {
+      flex: 1,
+      backgroundColor: "#0B0D10",
+    },
 
-  scroll: {
-    flex: 1,
-  },
+    scroll: {
+      flex: 1,
+    },
 
-  container: {
-    paddingHorizontal: 20,
-    paddingTop: 55,
-  },
+    container: {
+      paddingHorizontal: 20,
+      paddingTop: 55,
+    },
 
-  backButton: {
-    alignSelf: "flex-start",
-    paddingVertical: 2,
-    paddingRight: 15,
-  },
+    backButton: {
+      alignSelf: "flex-start",
+      paddingRight: 15,
+      paddingVertical: 2,
+    },
 
-  back: {
-    color: "#FFFFFF",
-    fontSize: 38,
-    lineHeight: 38,
-  },
+    back: {
+      color: "#FFFFFF",
+      fontSize: 38,
+      lineHeight: 38,
+    },
 
-  title: {
-    color: "#FFFFFF",
-    fontSize: 28,
-    fontWeight: "700",
-    marginTop: 8,
-  },
+    header: {
+      marginTop: 8,
+      marginBottom: 25,
+    },
 
-  subtitle: {
-    color: "#7E8794",
-    fontSize: 14,
-    marginTop: 5,
-    marginBottom: 28,
-  },
+    title: {
+      color: "#FFFFFF",
+      fontSize: 28,
+      fontWeight: "700",
+    },
 
-  stateCard: {
-    backgroundColor: "#171A20",
-    borderRadius: 18,
-    padding: 20,
-    marginBottom: 15,
-  },
+    subtitle: {
+      color: "#7E8794",
+      fontSize: 14,
+      marginTop: 5,
+    },
 
-  stateText: {
-    color: "#8D98A4",
-    fontSize: 13,
-  },
+    // ----------------------------------------------
+    // STATES
+    // ----------------------------------------------
 
-  errorText: {
-    color: "#FF9B9B",
-    fontSize: 13,
-    lineHeight: 19,
-  },
+    stateCard: {
+      backgroundColor: "#171A20",
+      borderRadius: 18,
+      padding: 22,
+      alignItems: "center",
+      marginBottom: 15,
+    },
 
-  retryButton: {
-    marginTop: 15,
-    alignSelf: "flex-start",
-    backgroundColor: "#FFFFFF",
-    borderRadius: 10,
-    paddingVertical: 9,
-    paddingHorizontal: 15,
-  },
+    stateText: {
+      color: "#8D98A4",
+      fontSize: 12,
+      lineHeight: 18,
+      textAlign: "center",
+      marginTop: 8,
+    },
 
-  retryText: {
-    color: "#0B0D10",
-    fontSize: 12,
-    fontWeight: "700",
-  },
+    emptyTitle: {
+      color: "#FFFFFF",
+      fontSize: 16,
+      fontWeight: "700",
+    },
 
-  card: {
-    backgroundColor: "#171A20",
-    borderRadius: 20,
-    padding: 20,
-    marginBottom: 14,
-  },
+    errorTitle: {
+      color: "#FFFFFF",
+      fontSize: 16,
+      fontWeight: "700",
+      textAlign: "center",
+    },
 
-  pressed: {
-    opacity: 0.75,
-    transform: [{ scale: 0.99 }],
-  },
+    errorText: {
+      color: "#FF9B9B",
+      fontSize: 12,
+      lineHeight: 18,
+      textAlign: "center",
+      marginTop: 8,
+    },
 
-  cardTop: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
+    retryButton: {
+      marginTop: 16,
+      backgroundColor: "#FFFFFF",
+      borderRadius: 10,
+      paddingVertical: 10,
+      paddingHorizontal: 18,
+    },
 
-  courseIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 14,
-    backgroundColor: "#232832",
-    justifyContent: "center",
-    alignItems: "center",
-    marginRight: 13,
-  },
+    retryText: {
+      color: "#0B0D10",
+      fontSize: 12,
+      fontWeight: "700",
+    },
 
-  courseIconText: {
-    color: "#6FC5FF",
-    fontSize: 11,
-    fontWeight: "800",
-  },
+    // ----------------------------------------------
+    // COURSE CARD
+    // ----------------------------------------------
 
-  courseMain: {
-    flex: 1,
-  },
+    card: {
+      backgroundColor: "#171A20",
+      borderRadius: 20,
+      padding: 20,
+      marginBottom: 14,
+    },
 
-  name: {
-    color: "#FFFFFF",
-    fontSize: 18,
-    fontWeight: "700",
-    lineHeight: 23,
-  },
+    pressed: {
+      opacity: 0.75,
+      transform: [
+        {
+          scale: 0.99,
+        },
+      ],
+    },
 
-  code: {
-    color: "#7E8794",
-    fontSize: 12,
-    marginTop: 5,
-  },
+    cardTop: {
+      flexDirection: "row",
+      alignItems: "center",
+    },
 
-  chevron: {
-    color: "#68727D",
-    fontSize: 28,
-    marginLeft: 8,
-  },
+    courseIcon: {
+      width: 50,
+      height: 50,
+      borderRadius: 15,
+      backgroundColor: "#232832",
+      alignItems: "center",
+      justifyContent: "center",
+      marginRight: 13,
+    },
 
-  progressHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginTop: 24,
-  },
+    courseIconText: {
+      color: "#6FC5FF",
+      fontSize: 10,
+      fontWeight: "800",
+      maxWidth: 42,
+    },
 
-  progressLabel: {
-    color: "#89939F",
-    fontSize: 12,
-  },
+    courseMain: {
+      flex: 1,
+    },
 
-  progress: {
-    color: "#FFFFFF",
-    fontSize: 12,
-    fontWeight: "700",
-  },
+    courseName: {
+      color: "#FFFFFF",
+      fontSize: 17,
+      fontWeight: "700",
+      lineHeight: 22,
+    },
 
-  progressTrack: {
-    height: 7,
-    backgroundColor: "#292E36",
-    borderRadius: 5,
-    marginTop: 9,
-    overflow: "hidden",
-  },
+    courseCode: {
+      color: "#7E8794",
+      fontSize: 11,
+      marginTop: 5,
+    },
 
-  progressFill: {
-    height: "100%",
-    backgroundColor: "#6FC5FF",
-    borderRadius: 5,
-  },
+    chevron: {
+      color: "#68727D",
+      fontSize: 28,
+      marginLeft: 8,
+    },
 
-  statusContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    alignSelf: "flex-start",
-    marginTop: 14,
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-  },
+    // ----------------------------------------------
+    // PROGRESS
+    // ----------------------------------------------
 
-  warningContainer: {
-    backgroundColor: "#2A211A",
-  },
+    progressHeader: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginTop: 24,
+    },
 
-  normalContainer: {
-    backgroundColor: "#18241F",
-  },
+    progressLabel: {
+      color: "#89939F",
+      fontSize: 11,
+    },
 
-  statusDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-    marginRight: 7,
-  },
+    progress: {
+      color: "#FFFFFF",
+      fontSize: 12,
+      fontWeight: "700",
+    },
 
-  warningDot: {
-    backgroundColor: "#FFB86B",
-  },
+    progressTrack: {
+      height: 7,
+      backgroundColor: "#292E36",
+      borderRadius: 5,
+      marginTop: 9,
+      overflow: "hidden",
+    },
 
-  normalDot: {
-    backgroundColor: "#72D6A0",
-  },
+    progressFill: {
+      height: "100%",
+      backgroundColor: "#6FC5FF",
+      borderRadius: 5,
+    },
 
-  status: {
-    fontSize: 12,
-    fontWeight: "600",
-  },
+    // ----------------------------------------------
+    // STATUS
+    // ----------------------------------------------
 
-  warningText: {
-    color: "#FFB86B",
-  },
+    statusContainer: {
+      alignSelf: "flex-start",
+      flexDirection: "row",
+      alignItems: "center",
+      borderRadius: 10,
+      paddingHorizontal: 10,
+      paddingVertical: 7,
+      marginTop: 14,
+    },
 
-  normalText: {
-    color: "#72D6A0",
-  },
+    warningContainer: {
+      backgroundColor: "#2A211A",
+    },
 
-  addCourse: {
-    backgroundColor: "#121820",
-    borderRadius: 18,
-    padding: 18,
-    flexDirection: "row",
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: "#252A31",
-    borderStyle: "dashed",
-    marginTop: 4,
-  },
+    normalContainer: {
+      backgroundColor: "#18241F",
+    },
 
-  addIcon: {
-    color: "#6FC5FF",
-    fontSize: 27,
-    fontWeight: "300",
-    marginRight: 14,
-  },
+    statusDot: {
+      width: 7,
+      height: 7,
+      borderRadius: 4,
+      marginRight: 7,
+    },
 
-  addTitle: {
-    color: "#E4E8ED",
-    fontSize: 14,
-    fontWeight: "600",
-  },
+    warningDot: {
+      backgroundColor: "#FFB86B",
+    },
 
-  addSubtitle: {
-    color: "#68727D",
-    fontSize: 11,
-    marginTop: 3,
-  },
-});
+    normalDot: {
+      backgroundColor: "#72D6A0",
+    },
+
+    statusText: {
+      fontSize: 11,
+      fontWeight: "600",
+    },
+
+    warningText: {
+      color: "#FFB86B",
+    },
+
+    normalText: {
+      color: "#72D6A0",
+    },
+
+    // ----------------------------------------------
+    // CARD FOOTER
+    // ----------------------------------------------
+
+    cardFooter: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      marginTop: 15,
+      paddingTop: 12,
+      borderTopWidth: 1,
+      borderTopColor: "#252A31",
+    },
+
+    footerMeta: {
+      color: "#65707C",
+      fontSize: 10,
+    },
+
+    // ----------------------------------------------
+    // FOOTER INFO
+    // ----------------------------------------------
+
+    footerCard: {
+      backgroundColor: "#121820",
+      borderWidth: 1,
+      borderColor: "#1E2A35",
+      borderRadius: 17,
+      padding: 17,
+      marginTop: 4,
+    },
+
+    footerTitle: {
+      color: "#E7EBF0",
+      fontSize: 13,
+      fontWeight: "700",
+    },
+
+    footerText: {
+      color: "#73808D",
+      fontSize: 10,
+      lineHeight: 16,
+      marginTop: 5,
+    },
+  });
