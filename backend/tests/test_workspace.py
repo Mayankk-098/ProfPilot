@@ -273,3 +273,194 @@ def test_course_crud_and_lecturer_isolation():
         app.dependency_overrides.clear()
         db.close()
         engine.dispose()
+
+
+def test_syllabus_crud_reorder_and_isolation():
+    client, db, engine = make_client()
+
+    try:
+        lecturer_a = _register(
+            client,
+            email="syllabus-a@university.edu",
+            name="Syllabus A",
+        )
+        lecturer_b = _register(
+            client,
+            email="syllabus-b@university.edu",
+            name="Syllabus B",
+        )
+
+        created_course = client.post(
+            "/courses/",
+            headers=lecturer_a,
+            json={
+                "code": "CSE-SYL-1",
+                "name": "Software Architecture",
+                "short_name": "SWA",
+                "section": "CSE-A",
+                "start_date": "2026-10-01",
+                "planned_end_date": "2026-12-01",
+            },
+        )
+        assert created_course.status_code == 201, created_course.text
+        course_id = created_course.json()["id"]
+
+        first_unit = client.post(
+            f"/courses/{course_id}/units",
+            headers=lecturer_a,
+            json={"name": "Foundations"},
+        )
+        assert first_unit.status_code == 201, first_unit.text
+        unit_id = first_unit.json()["id"]
+        assert unit_id.startswith("unit_")
+
+        second_unit = client.post(
+            f"/courses/{course_id}/units",
+            headers=lecturer_a,
+            json={"name": "Advanced Topics"},
+        )
+        assert second_unit.status_code == 201, second_unit.text
+        second_unit_id = second_unit.json()["id"]
+
+        topic_a = client.post(
+            f"/courses/{course_id}/units/{unit_id}/topics",
+            headers=lecturer_a,
+            json={
+                "name": "Architecture Styles",
+                "planned_date": "2026-10-10",
+            },
+        )
+        assert topic_a.status_code == 201, topic_a.text
+        topic_a_body = topic_a.json()
+        topic_a_id = topic_a_body["id"]
+        assert topic_a_body["planned_date"] == "2026-10-10"
+        assert topic_a_body["completed"] is False
+
+        topic_b = client.post(
+            f"/courses/{course_id}/units/{unit_id}/topics",
+            headers=lecturer_a,
+            json={"name": "Design Principles"},
+        )
+        assert topic_b.status_code == 201, topic_b.text
+        topic_b_id = topic_b.json()["id"]
+
+        listed = client.get(
+            f"/courses/{course_id}",
+            headers=lecturer_a,
+        )
+        assert listed.status_code == 200
+        body = listed.json()
+        assert [unit["name"] for unit in body["syllabus"]] == [
+            "Foundations",
+            "Advanced Topics",
+        ]
+        assert [topic["name"] for topic in body["syllabus"][0]["topics"]] == [
+            "Architecture Styles",
+            "Design Principles",
+        ]
+
+        updated_topic = client.patch(
+            f"/courses/{course_id}/units/{unit_id}/topics/{topic_a_id}",
+            headers=lecturer_a,
+            json={
+                "name": "Architectural Styles",
+                "planned_date": "2026-10-12",
+            },
+        )
+        assert updated_topic.status_code == 200, updated_topic.text
+        assert updated_topic.json()["id"] == topic_a_id
+        assert updated_topic.json()["name"] == "Architectural Styles"
+        assert updated_topic.json()["planned_date"] == "2026-10-12"
+
+        updated_unit = client.patch(
+            f"/courses/{course_id}/units/{unit_id}",
+            headers=lecturer_a,
+            json={"name": "Core Foundations"},
+        )
+        assert updated_unit.status_code == 200, updated_unit.text
+        assert updated_unit.json()["id"] == unit_id
+        assert updated_unit.json()["name"] == "Core Foundations"
+
+        reversed_topics = client.put(
+            f"/courses/{course_id}/units/{unit_id}/topics/reorder",
+            headers=lecturer_a,
+            json={"ids": [topic_b_id, topic_a_id]},
+        )
+        assert reversed_topics.status_code == 200, reversed_topics.text
+        assert [topic["id"] for topic in reversed_topics.json()] == [
+            topic_b_id,
+            topic_a_id,
+        ]
+
+        reversed_units = client.put(
+            f"/courses/{course_id}/units/reorder",
+            headers=lecturer_a,
+            json={"ids": [second_unit_id, unit_id]},
+        )
+        assert reversed_units.status_code == 200, reversed_units.text
+        assert [unit["id"] for unit in reversed_units.json()] == [
+            second_unit_id,
+            unit_id,
+        ]
+
+        invalid_reorder = client.put(
+            f"/courses/{course_id}/units/reorder",
+            headers=lecturer_a,
+            json={"ids": [unit_id, unit_id]},
+        )
+        assert invalid_reorder.status_code == 422
+
+        # Lecturer B must not be able to read or mutate A's syllabus.
+        assert client.post(
+            f"/courses/{course_id}/units",
+            headers=lecturer_b,
+            json={"name": "Unauthorized Unit"},
+        ).status_code == 404
+
+        assert client.patch(
+            f"/courses/{course_id}/units/{unit_id}",
+            headers=lecturer_b,
+            json={"name": "Hijacked"},
+        ).status_code == 404
+
+        assert client.patch(
+            f"/courses/{course_id}/units/{unit_id}/topics/{topic_a_id}",
+            headers=lecturer_b,
+            json={"name": "Hijacked Topic"},
+        ).status_code == 404
+
+        assert client.delete(
+            f"/courses/{course_id}/units/{unit_id}/topics/{topic_a_id}",
+            headers=lecturer_b,
+        ).status_code == 404
+
+        deleted_topic = client.delete(
+            f"/courses/{course_id}/units/{unit_id}/topics/{topic_a_id}",
+            headers=lecturer_a,
+        )
+        assert deleted_topic.status_code == 204
+
+        remaining_topic = client.get(
+            f"/courses/{course_id}",
+            headers=lecturer_a,
+        ).json()["syllabus"][1]["topics"]
+        assert [topic["id"] for topic in remaining_topic] == [
+            topic_b_id
+        ]
+
+        deleted_unit = client.delete(
+            f"/courses/{course_id}/units/{second_unit_id}",
+            headers=lecturer_a,
+        )
+        assert deleted_unit.status_code == 204
+
+        final_syllabus = client.get(
+            f"/courses/{course_id}",
+            headers=lecturer_a,
+        ).json()["syllabus"]
+        assert [unit["id"] for unit in final_syllabus] == [unit_id]
+        assert final_syllabus[0]["name"] == "Core Foundations"
+    finally:
+        app.dependency_overrides.clear()
+        db.close()
+        engine.dispose()
