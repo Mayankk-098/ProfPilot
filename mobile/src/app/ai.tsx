@@ -12,6 +12,7 @@ import {
 } from "react-native";
 
 import {
+  useCallback,
   useEffect,
   useRef,
   useState,
@@ -76,11 +77,7 @@ export default function AIScreen() {
   const [executingId, setExecutingId] =
     useState<string | null>(null);
 
-  useEffect(() => {
-    loadContext();
-  }, [selectedCourseId]);
-
-  async function loadContext() {
+  const loadContext = useCallback(async () => {
     try {
       const me = await getMe();
 
@@ -102,7 +99,11 @@ export default function AIScreen() {
         error
       );
     }
-  }
+  }, [selectedCourseId]);
+
+  useEffect(() => {
+    void loadContext();
+  }, [loadContext]);
 
   const courseName =
     context?.selected_course
@@ -197,7 +198,7 @@ export default function AIScreen() {
             text:
               error instanceof Error
                 ? error.message
-                : "Couldn't connect to ProfPilot AI.",
+                : "Couldn&apos;t connect to ProfPilot AI.",
           },
         ]
       );
