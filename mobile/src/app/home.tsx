@@ -62,7 +62,7 @@ export default function HomeScreen() {
       setError(
         err instanceof Error
           ? err.message
-          : "Couldn't load dashboard."
+          : "Couldn&apos;t load dashboard."
       );
     } finally {
       setLoading(false);
