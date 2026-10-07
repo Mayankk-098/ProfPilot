@@ -247,6 +247,35 @@ def _validate_roster(
     return enrolled_ids
 
 
+def get_attendance_session(
+    db: Session,
+    course,
+    class_date: date,
+) -> dict:
+    records = db.scalars(
+        select(AttendanceRecord)
+        .where(
+            AttendanceRecord.course_id == course.id,
+            AttendanceRecord.class_date == class_date,
+        )
+        .order_by(AttendanceRecord.student_id)
+    ).all()
+
+    return {
+        "course_id": course.id,
+        "class_date": class_date.isoformat(),
+        "recorded": bool(records),
+        "records": [
+            {
+                "student_id": record.student_id,
+                "status": record.status,
+            }
+            for record in records
+        ],
+    }
+
+
+
 def record_attendance(
     db: Session,
     course,
