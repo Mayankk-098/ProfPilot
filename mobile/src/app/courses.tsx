@@ -54,7 +54,7 @@ export default function CoursesScreen() {
       setError(
         err instanceof Error
           ? err.message
-          : "Couldn't load courses."
+          : "Couldn&apos;t load courses."
       );
     } finally {
       setLoading(false);
@@ -136,7 +136,7 @@ export default function CoursesScreen() {
               <Text
                 style={styles.errorTitle}
               >
-                Couldn't load courses
+                Couldn&apos;t load courses
               </Text>
 
               <Text
