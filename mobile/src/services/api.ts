@@ -182,6 +182,23 @@ export type AttendanceStudent = {
   classes_needed_to_recover: number;
 };
 
+export type AttendanceStatus =
+  | "present"
+  | "absent"
+  | "excused";
+
+export type AttendanceSessionRecord = {
+  student_id: string;
+  status: AttendanceStatus;
+};
+
+export type AttendanceSessionResponse = {
+  course_id: string;
+  class_date: string;
+  recorded: boolean;
+  records: AttendanceSessionRecord[];
+};
+
 export type AttendanceCourseResponse = {
   course_id: string;
   course_code: string;
@@ -760,6 +777,56 @@ export async function getCourseAttendance(
     )}`
   );
 }
+
+export async function getAttendanceSession(
+  courseId: string,
+  classDate: string
+): Promise<AttendanceSessionResponse> {
+  return request<AttendanceSessionResponse>(
+    `/attendance/${encodeURIComponent(
+      courseId
+    )}/records/${encodeURIComponent(classDate)}`
+  );
+}
+
+export async function submitAttendance(
+  courseId: string,
+  classDate: string,
+  records: AttendanceSessionRecord[]
+): Promise<{ course_id: string; class_date: string; created: number; updated: number }> {
+  return request(
+    `/attendance/${encodeURIComponent(
+      courseId
+    )}/records`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        class_date: classDate,
+        records,
+      }),
+    }
+  );
+}
+
+export async function correctAttendance(
+  courseId: string,
+  classDate: string,
+  records: AttendanceSessionRecord[]
+): Promise<{ course_id: string; class_date: string; created: number; updated: number }> {
+  return request(
+    `/attendance/${encodeURIComponent(
+      courseId
+    )}/records/${encodeURIComponent(classDate)}`,
+    {
+      method: "PUT",
+      body: JSON.stringify({
+        class_date: classDate,
+        records,
+      }),
+    }
+  );
+}
+
 
 // ================================
 // AI APIs
