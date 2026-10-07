@@ -463,3 +463,146 @@ def test_syllabus_crud_reorder_and_isolation():
         app.dependency_overrides.clear()
         db.close()
         engine.dispose()
+
+
+def test_timetable_template_crud_and_isolation():
+    client, db, engine = make_client()
+
+    try:
+        lecturer_a = _register(
+            client,
+            email="schedule-a@university.edu",
+            name="Schedule A",
+        )
+        lecturer_b = _register(
+            client,
+            email="schedule-b@university.edu",
+            name="Schedule B",
+        )
+
+        course = client.post(
+            "/courses/",
+            headers=lecturer_a,
+            json={
+                "code": "CSE-TT-1",
+                "name": "Computer Networks",
+                "short_name": "CN",
+                "section": "CSE-A",
+                "start_date": "2026-10-01",
+                "planned_end_date": "2026-12-01",
+            },
+        )
+        assert course.status_code == 201, course.text
+        course_id = course.json()["id"]
+
+        created = client.post(
+            "/schedule/templates",
+            headers=lecturer_a,
+            json={
+                "weekday": 0,
+                "start_time": "09:00",
+                "end_time": "10:00",
+                "room": "LT-1",
+                "course_id": course_id,
+            },
+        )
+        assert created.status_code == 201, created.text
+        body = created.json()
+        item_id = body["id"]
+        assert item_id.startswith("sch_")
+        assert body["subject"] == "CN"
+        assert body["code"] == "CSE-TT-1"
+        assert body["batch"] == "CSE-A"
+        assert body["weekday"] == 0
+        assert body["start_time"] == "09:00"
+        assert body["end_time"] == "10:00"
+        assert body["room"] == "LT-1"
+        assert body["item_type"] == "class"
+        assert body["lecturer_id"] == lecturer_a["Authorization"] is not None
+
+        listed = client.get(
+            "/schedule/templates",
+            headers=lecturer_a,
+        )
+        assert listed.status_code == 200
+        assert [item["id"] for item in listed.json()] == [item_id]
+
+        assert client.get(
+            "/schedule/templates",
+            headers=lecturer_b,
+        ).json() == []
+
+        detail = client.get(
+            f"/schedule/templates/{item_id}",
+            headers=lecturer_a,
+        )
+        assert detail.status_code == 200
+        assert detail.json()["id"] == item_id
+
+        overlap = client.post(
+            "/schedule/templates",
+            headers=lecturer_a,
+            json={
+                "weekday": 0,
+                "start_time": "09:30",
+                "end_time": "10:30",
+                "room": "LT-2",
+                "course_id": course_id,
+            },
+        )
+        assert overlap.status_code == 422
+
+        updated = client.patch(
+            f"/schedule/templates/{item_id}",
+            headers=lecturer_a,
+            json={
+                "weekday": 2,
+                "start_time": "11:00",
+                "end_time": "12:30",
+                "room": "LAB-2",
+                "batch": "CSE-B",
+            },
+        )
+        assert updated.status_code == 200, updated.text
+        updated_body = updated.json()
+        assert updated_body["id"] == item_id
+        assert updated_body["weekday"] == 2
+        assert updated_body["start_time"] == "11:00"
+        assert updated_body["end_time"] == "12:30"
+        assert updated_body["room"] == "LAB-2"
+        assert updated_body["batch"] == "CSE-B"
+
+        assert client.patch(
+            f"/schedule/templates/{item_id}",
+            headers=lecturer_b,
+            json={"room": "HIJACKED"},
+        ).status_code == 404
+
+        assert client.get(
+            f"/schedule/templates/{item_id}",
+            headers=lecturer_b,
+        ).status_code == 404
+
+        assert client.delete(
+            f"/schedule/templates/{item_id}",
+            headers=lecturer_b,
+        ).status_code == 404
+
+        deleted = client.delete(
+            f"/schedule/templates/{item_id}",
+            headers=lecturer_a,
+        )
+        assert deleted.status_code == 204
+
+        assert client.get(
+            f"/schedule/templates/{item_id}",
+            headers=lecturer_a,
+        ).status_code == 404
+        assert client.get(
+            "/schedule/templates",
+            headers=lecturer_a,
+        ).json() == []
+    finally:
+        app.dependency_overrides.clear()
+        db.close()
+        engine.dispose()
