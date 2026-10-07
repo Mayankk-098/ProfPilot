@@ -6,9 +6,23 @@ import io
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models.attendance import Enrollment, Student
+from app.models.attendance import AttendanceRecord, Enrollment, Student
 from app.services.ids import new_id
 from app.services.ownership import require_owned_course, require_owned_student
+
+
+
+def list_students(
+    db: Session,
+    lecturer_id: str,
+) -> list[Student]:
+    return list(
+        db.scalars(
+            select(Student)
+            .where(Student.lecturer_id == lecturer_id)
+            .order_by(Student.roll_no, Student.id)
+        ).all()
+    )
 
 
 def list_course_students(
@@ -120,6 +134,10 @@ def unenroll_student(
         raise LookupError("Student is not enrolled in this course")
 
     db.delete(enrollment)
+    db.query(AttendanceRecord).filter(
+        AttendanceRecord.student_id == student.id,
+        AttendanceRecord.course_id == course.id,
+    ).delete(synchronize_session=False)
     db.flush()
 
     remaining = db.scalar(
