@@ -19,10 +19,21 @@ export type LoginResponse = {
   token_type: string;
 };
 
+export type RegisterRequest = {
+  name: string;
+  email: string;
+  password: string;
+  department: string;
+  title: string;
+};
+
 export type CurrentUser = {
-  id: string;
+  id: number;
   email: string;
   lecturer_id: string;
+  name: string;
+  title: string;
+  department: string;
 };
 
 // ================================
@@ -290,6 +301,25 @@ async function request<T>(
 // AUTH APIs
 // ================================
 
+export async function registerLecturer(
+  data: RegisterRequest
+): Promise<LoginResponse> {
+  const result =
+    await request<LoginResponse>(
+      "/auth/register",
+      {
+        method: "POST",
+        body: JSON.stringify(data),
+      }
+    );
+
+  setAccessToken(
+    result.access_token
+  );
+
+  return result;
+}
+
 export async function login(
   email: string,
   password: string
@@ -350,6 +380,27 @@ export async function getCourses(): Promise<
 > {
   return request<CourseSummary[]>(
     "/courses/"
+  );
+}
+
+export type CourseCreateRequest = {
+  code: string;
+  name: string;
+  short_name: string;
+  section: string;
+  start_date: string;
+  planned_end_date: string;
+};
+
+export async function createCourse(
+  data: CourseCreateRequest
+): Promise<CourseDetail> {
+  return request<CourseDetail>(
+    "/courses/",
+    {
+      method: "POST",
+      body: JSON.stringify(data),
+    }
   );
 }
 
