@@ -29,7 +29,6 @@ def make_client():
     session_local = sessionmaker(
         bind=engine,
         autoflush=False,
-        expire_on_commit=False,
     )
     db = session_local()
 
