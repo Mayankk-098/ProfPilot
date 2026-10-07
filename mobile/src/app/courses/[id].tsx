@@ -219,7 +219,13 @@ export default function CourseDetailScreen() {
           <ActionCard
             icon="◎"
             title="Syllabus"
-            subtitle="Course topics"
+            subtitle="Manage units & topics"
+            onPress={() =>
+              router.push({
+                pathname: "/courses/[id]/syllabus" as any,
+                params: { id: course.id },
+              })
+            }
           />
         </View>
 
