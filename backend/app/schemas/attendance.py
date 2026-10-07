@@ -41,6 +41,18 @@ class AttendanceSubmit(BaseModel):
     records: list[AttendanceMark]
 
 
+class AttendanceSessionRecord(BaseModel):
+    student_id: str
+    status: Literal["present", "absent", "excused"]
+
+
+class AttendanceSessionResponse(BaseModel):
+    course_id: str
+    class_date: str
+    recorded: bool
+    records: list[AttendanceSessionRecord]
+
+
 class AttendanceSubmitResult(BaseModel):
     course_id: str
     class_date: str
