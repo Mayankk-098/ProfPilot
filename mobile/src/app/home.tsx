@@ -229,7 +229,7 @@ export default function HomeScreen() {
         </View>
 
         <Text style={styles.sectionTitle}>
-          Today's Schedule
+          Today&apos;s Schedule
         </Text>
 
         <View style={styles.schedule}>
