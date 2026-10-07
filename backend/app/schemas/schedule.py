@@ -26,3 +26,41 @@ class ScheduleChangeResponse(BaseModel):
     new_end_time: str | None
     new_room: str | None
     reason: str | None
+
+
+class ScheduleTemplateResponse(BaseModel):
+    id: str
+    subject: str
+    code: str | None
+    batch: str
+    weekday: int
+    start_time: str
+    end_time: str
+    room: str
+    item_type: str
+    lecturer_id: str
+    course_id: str | None
+
+
+class ScheduleTemplateCreate(BaseModel):
+    weekday: int
+    start_time: dt.time
+    end_time: dt.time
+    room: str
+    item_type: str = "class"
+    course_id: str | None = None
+    subject: str | None = None
+    code: str | None = None
+    batch: str | None = None
+
+
+class ScheduleTemplateUpdate(BaseModel):
+    weekday: int | None = None
+    start_time: dt.time | None = None
+    end_time: dt.time | None = None
+    room: str | None = None
+    item_type: str | None = None
+    course_id: str | None = None
+    subject: str | None = None
+    code: str | None = None
+    batch: str | None = None
