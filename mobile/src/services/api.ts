@@ -620,6 +620,134 @@ export async function deleteScheduleTemplate(
 }
 
 // ================================
+// STUDENT APIs
+// ================================
+
+export type Student = {
+  id: string;
+  roll_no: string;
+  name: string;
+  section: string;
+  lecturer_id: string;
+};
+
+export type StudentCreateRequest = {
+  roll_no: string;
+  name: string;
+  section?: string | null;
+};
+
+export type StudentUpdateRequest = {
+  roll_no?: string;
+  name?: string;
+  section?: string;
+};
+
+export type StudentImportRowPreview = {
+  line: number;
+  roll_no: string;
+  name: string;
+  section: string;
+  status: string;
+  message: string;
+};
+
+export type StudentImportPreviewResponse = {
+  course_id: string;
+  valid_count: number;
+  error_count: number;
+  rows: StudentImportRowPreview[];
+};
+
+export type StudentImportResult = {
+  created: number;
+  enrolled: number;
+};
+
+export async function getCourseStudents(
+  courseId: string
+): Promise<Student[]> {
+  return request<Student[]>(
+    "/courses/" + encodeURIComponent(courseId) + "/students"
+  );
+}
+
+export async function addCourseStudent(
+  courseId: string,
+  data: StudentCreateRequest
+): Promise<Student> {
+  return request<Student>(
+    "/courses/" + encodeURIComponent(courseId) + "/students",
+    {
+      method: "POST",
+      body: JSON.stringify(data),
+    }
+  );
+}
+
+export async function updateStudent(
+  studentId: string,
+  data: StudentUpdateRequest
+): Promise<Student> {
+  return request<Student>(
+    "/students/" + encodeURIComponent(studentId),
+    {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }
+  );
+}
+
+export async function removeCourseStudent(
+  courseId: string,
+  studentId: string
+): Promise<void> {
+  await request<void>(
+    "/courses/" +
+      encodeURIComponent(courseId) +
+      "/students/" +
+      encodeURIComponent(studentId),
+    {
+      method: "DELETE",
+    }
+  );
+}
+
+export async function previewStudentImport(
+  courseId: string,
+  content: string
+): Promise<StudentImportPreviewResponse> {
+  return request<StudentImportPreviewResponse>(
+    "/courses/" +
+      encodeURIComponent(courseId) +
+      "/students/import/preview",
+    {
+      method: "POST",
+      body: JSON.stringify({ content }),
+    }
+  );
+}
+
+export async function confirmStudentImport(
+  courseId: string,
+  students: Array<{
+    roll_no: string;
+    name: string;
+    section?: string;
+  }>
+): Promise<StudentImportResult> {
+  return request<StudentImportResult>(
+    "/courses/" +
+      encodeURIComponent(courseId) +
+      "/students/import/confirm",
+    {
+      method: "POST",
+      body: JSON.stringify({ students }),
+    }
+  );
+}
+
+// ================================
 // ATTENDANCE API
 // ================================
 
