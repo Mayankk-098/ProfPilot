@@ -606,3 +606,187 @@ def test_timetable_template_crud_and_isolation():
         app.dependency_overrides.clear()
         db.close()
         engine.dispose()
+
+
+def test_student_roster_enrollment_import_and_isolation():
+    client, db, engine = make_client()
+
+    try:
+        lecturer_a = _register(
+            client,
+            email="students-a@university.edu",
+            name="Students A",
+        )
+        lecturer_b = _register(
+            client,
+            email="students-b@university.edu",
+            name="Students B",
+        )
+
+        course_a = client.post(
+            "/courses/",
+            headers=lecturer_a,
+            json={
+                "code": "CSE-ST-1",
+                "name": "Data Structures",
+                "short_name": "DS",
+                "section": "CSE-A",
+                "start_date": "2026-10-01",
+                "planned_end_date": "2026-12-01",
+            },
+        )
+        assert course_a.status_code == 201, course_a.text
+        course_a_id = course_a.json()["id"]
+
+        course_b = client.post(
+            "/courses/",
+            headers=lecturer_a,
+            json={
+                "code": "CSE-ST-2",
+                "name": "Operating Systems",
+                "short_name": "OS",
+                "section": "CSE-A",
+                "start_date": "2026-10-01",
+                "planned_end_date": "2026-12-01",
+            },
+        )
+        assert course_b.status_code == 201, course_b.text
+        course_b_id = course_b.json()["id"]
+
+        added = client.post(
+            f"/courses/{course_a_id}/students",
+            headers=lecturer_a,
+            json={
+                "roll_no": "24BCS101",
+                "name": "Alice Kumar",
+                "section": "CSE-A",
+            },
+        )
+        assert added.status_code == 201, added.text
+        student = added.json()
+        student_id = student["id"]
+        assert student_id.startswith("stu_")
+        assert student["lecturer_id"].startswith("lec_")
+        assert student["roll_no"] == "24BCS101"
+
+        listed = client.get(
+            f"/courses/{course_a_id}/students",
+            headers=lecturer_a,
+        )
+        assert listed.status_code == 200
+        assert [item["id"] for item in listed.json()] == [student_id]
+
+        listed_all = client.get(
+            "/students",
+            headers=lecturer_a,
+        )
+        assert listed_all.status_code == 200
+        assert [item["id"] for item in listed_all.json()] == [student_id]
+
+        duplicate = client.post(
+            f"/courses/{course_a_id}/students",
+            headers=lecturer_a,
+            json={
+                "roll_no": "24BCS101",
+                "name": "Alice Kumar",
+                "section": "CSE-A",
+            },
+        )
+        assert duplicate.status_code == 201
+        assert duplicate.json()["id"] == student_id
+
+        cross_course = client.post(
+            f"/courses/{course_b_id}/students",
+            headers=lecturer_a,
+            json={
+                "roll_no": "24BCS101",
+                "name": "Alice Kumar",
+                "section": "CSE-A",
+            },
+        )
+        assert cross_course.status_code == 201
+        assert cross_course.json()["id"] == student_id
+
+        updated = client.patch(
+            f"/students/{student_id}",
+            headers=lecturer_a,
+            json={
+                "name": "Alice Sharma",
+                "section": "CSE-B",
+            },
+        )
+        assert updated.status_code == 200, updated.text
+        assert updated.json()["name"] == "Alice Sharma"
+        assert updated.json()["section"] == "CSE-B"
+
+        assert client.patch(
+            f"/students/{student_id}",
+            headers=lecturer_b,
+            json={"name": "Hijacked"},
+        ).status_code == 404
+
+        assert client.get(
+            f"/courses/{course_a_id}/students",
+            headers=lecturer_b,
+        ).status_code == 404
+
+        preview = client.post(
+            f"/courses/{course_a_id}/students/import/preview",
+            headers=lecturer_a,
+            json={
+                "content": (
+                    "roll_no,name,section\\n"
+                    "24BCS102,Bob Singh,CSE-A\\n"
+                    "24BCS103,Carol Verma,CSE-A\\n"
+                    "24BCS103,Duplicate,CSE-A\\n"
+                    ",Missing Roll,CSE-A\\n"
+                )
+            },
+        )
+        assert preview.status_code == 200, preview.text
+        preview_body = preview.json()
+        assert preview_body["valid_count"] == 2
+        assert preview_body["error_count"] == 2
+
+        confirmed = client.post(
+            f"/courses/{course_a_id}/students/import/confirm",
+            headers=lecturer_a,
+            json={
+                "students": [
+                    {"roll_no": "24BCS102", "name": "Bob Singh", "section": "CSE-A"},
+                    {"roll_no": "24BCS103", "name": "Carol Verma", "section": "CSE-A"},
+                ]
+            },
+        )
+        assert confirmed.status_code == 200, confirmed.text
+        assert confirmed.json() == {"created": 2, "enrolled": 2}
+
+        removed_a = client.delete(
+            f"/courses/{course_a_id}/students/{student_id}",
+            headers=lecturer_a,
+        )
+        assert removed_a.status_code == 204
+
+        still_global = client.get(
+            "/students",
+            headers=lecturer_a,
+        )
+        assert still_global.status_code == 200
+        assert any(item["id"] == student_id for item in still_global.json())
+
+        removed_b = client.delete(
+            f"/courses/{course_b_id}/students/{student_id}",
+            headers=lecturer_a,
+        )
+        assert removed_b.status_code == 204
+
+        final_global = client.get(
+            "/students",
+            headers=lecturer_a,
+        )
+        assert final_global.status_code == 200
+        assert student_id not in {item["id"] for item in final_global.json()}
+    finally:
+        app.dependency_overrides.clear()
+        db.close()
+        engine.dispose()
