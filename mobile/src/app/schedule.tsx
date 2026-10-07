@@ -80,7 +80,7 @@ export default function ScheduleScreen() {
         </Pressable>
 
         <Text style={styles.title}>
-          Today's Schedule
+          Today&apos;s Schedule
         </Text>
 
         <Text style={styles.subtitle}>
