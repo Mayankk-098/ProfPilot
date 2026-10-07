@@ -73,7 +73,7 @@ export default function SyllabusEditorScreen() {
   }, [courseId]);
 
   useEffect(() => {
-    void loadCourse();
+    void Promise.resolve().then(() => loadCourse());
   }, [loadCourse]);
 
   async function runMutation(operation: () => Promise<unknown>) {
@@ -311,7 +311,7 @@ export default function SyllabusEditorScreen() {
           <Text style={styles.infoTitle}>Build the teaching plan</Text>
           <Text style={styles.infoText}>
             Add units and topics here. Topic completion is recorded through
-            lecture coverage, while planned dates drive ProfPilot's pacing and
+            lecture coverage, while planned dates drive ProfPilot&apos;s pacing and
             completion intelligence.
           </Text>
         </View>
