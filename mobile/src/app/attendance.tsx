@@ -87,7 +87,7 @@ export default function AttendanceScreen() {
     void Promise.resolve().then(() => loadAttendance());
   }, [loadAttendance]);
 
-  const loadSession = useCallback(async () => {
+  async function loadSession() {
     if (!courseId) return;
 
     if (!/^\d{4}-\d{2}-\d{2}$/.test(classDate.trim())) {
@@ -125,7 +125,7 @@ export default function AttendanceScreen() {
     } finally {
       setSessionLoading(false);
     }
-  }, [attendance?.students, classDate, courseId]);
+  }
 
   function setAll(status: AttendanceStatus) {
     const next: Record<string, AttendanceStatus> = {};
