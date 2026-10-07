@@ -728,6 +728,20 @@ def _serialize_template(item: ScheduleItem) -> dict:
     }
 
 
+
+def get_item_template(
+    db,
+    item_id: str,
+    lecturer_id: str,
+) -> dict:
+    item = _get_item(
+        db,
+        item_id,
+        lecturer_id=lecturer_id,
+    )
+    return _serialize_template(item)
+
+
 def list_items(db, lecturer_id: str) -> list[dict]:
     items = (
         db.query(ScheduleItem)
