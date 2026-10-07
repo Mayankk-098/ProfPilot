@@ -556,6 +556,69 @@ export async function getNextClass(): Promise<
   );
 }
 
+export type ScheduleTemplate = {
+  id: string;
+  subject: string;
+  code: string | null;
+  batch: string;
+  weekday: number;
+  start_time: string;
+  end_time: string;
+  room: string;
+  item_type: string;
+  lecturer_id: string;
+  course_id: string | null;
+};
+
+export type ScheduleTemplateCreateRequest = {
+  weekday: number;
+  start_time: string;
+  end_time: string;
+  room: string;
+  item_type?: "class" | "meeting";
+  course_id?: string | null;
+  subject?: string | null;
+  code?: string | null;
+  batch?: string | null;
+};
+
+export async function getScheduleTemplates(): Promise<ScheduleTemplate[]> {
+  return request<ScheduleTemplate[]>("/schedule/templates");
+}
+
+export async function createScheduleTemplate(
+  data: ScheduleTemplateCreateRequest
+): Promise<ScheduleTemplate> {
+  return request<ScheduleTemplate>("/schedule/templates", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function updateScheduleTemplate(
+  itemId: string,
+  data: Partial<ScheduleTemplateCreateRequest>
+): Promise<ScheduleTemplate> {
+  return request<ScheduleTemplate>(
+    `/schedule/templates/${encodeURIComponent(itemId)}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }
+  );
+}
+
+export async function deleteScheduleTemplate(
+  itemId: string
+): Promise<void> {
+  await request<void>(
+    `/schedule/templates/${encodeURIComponent(itemId)}`,
+    {
+      method: "DELETE",
+    }
+  );
+}
+
 // ================================
 // ATTENDANCE API
 // ================================
