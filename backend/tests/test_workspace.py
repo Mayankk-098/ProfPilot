@@ -735,11 +735,11 @@ def test_student_roster_enrollment_import_and_isolation():
             headers=lecturer_a,
             json={
                 "content": (
-                    "roll_no,name,section\\n"
-                    "24BCS102,Bob Singh,CSE-A\\n"
-                    "24BCS103,Carol Verma,CSE-A\\n"
-                    "24BCS103,Duplicate,CSE-A\\n"
-                    ",Missing Roll,CSE-A\\n"
+                    "roll_no,name,section\n"
+                    "24BCS102,Bob Singh,CSE-A\n"
+                    "24BCS103,Carol Verma,CSE-A\n"
+                    "24BCS103,Duplicate,CSE-A\n"
+                    ",Missing Roll,CSE-A\n"
                 )
             },
         )
