@@ -102,6 +102,15 @@ export default function CoursesScreen() {
           <Text style={styles.subtitle}>
             Your active courses this semester
           </Text>
+
+          <Pressable
+            style={styles.newCourseButton}
+            onPress={() => router.push("/courses/new")}
+          >
+            <Text style={styles.newCourseText}>
+              + New Course
+            </Text>
+          </Pressable>
         </View>
 
         {/* LOADING */}
@@ -168,6 +177,15 @@ export default function CoursesScreen() {
                 No active courses are available
                 for your faculty account.
               </Text>
+
+              <Pressable
+                style={styles.emptyCreateButton}
+                onPress={() => router.push("/courses/new")}
+              >
+                <Text style={styles.emptyCreateText}>
+                  Create your first course
+                </Text>
+              </Pressable>
             </View>
           )}
 
@@ -402,6 +420,21 @@ const styles =
       marginTop: 5,
     },
 
+    newCourseButton: {
+      alignSelf: "flex-start",
+      backgroundColor: "#FFFFFF",
+      borderRadius: 11,
+      paddingHorizontal: 14,
+      paddingVertical: 9,
+      marginTop: 14,
+    },
+
+    newCourseText: {
+      color: "#0B0D10",
+      fontSize: 12,
+      fontWeight: "700",
+    },
+
     // ----------------------------------------------
     // STATES
     // ----------------------------------------------
@@ -425,6 +458,20 @@ const styles =
     emptyTitle: {
       color: "#FFFFFF",
       fontSize: 16,
+      fontWeight: "700",
+    },
+
+    emptyCreateButton: {
+      marginTop: 16,
+      backgroundColor: "#FFFFFF",
+      borderRadius: 11,
+      paddingHorizontal: 15,
+      paddingVertical: 10,
+    },
+
+    emptyCreateText: {
+      color: "#0B0D10",
+      fontSize: 12,
       fontWeight: "700",
     },
 
