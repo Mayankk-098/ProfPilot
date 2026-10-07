@@ -55,7 +55,7 @@ export default function ScheduleScreen() {
       setError(
         err instanceof Error
           ? err.message
-          : "Couldn't load schedule."
+          : "Couldn&apos;t load schedule."
       );
     } finally {
       setLoading(false);
