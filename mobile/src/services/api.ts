@@ -747,11 +747,11 @@ export async function previewStudentImport(
 
 export async function confirmStudentImport(
   courseId: string,
-  students: Array<{
+  students: {
     roll_no: string;
     name: string;
     section?: string;
-  }>
+  }[]
 ): Promise<StudentImportResult> {
   return request<StudentImportResult>(
     "/courses/" +
