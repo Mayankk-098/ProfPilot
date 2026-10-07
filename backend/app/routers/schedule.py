@@ -9,6 +9,9 @@ from app.schemas.schedule import (
     CancelClassRequest,
     RescheduleClassRequest,
     ScheduleChangeResponse,
+    ScheduleTemplateCreate,
+    ScheduleTemplateResponse,
+    ScheduleTemplateUpdate,
 )
 from app.services import schedule_service
 from app.services import clock
@@ -103,6 +106,113 @@ def get_next_class(
         at or clock.now(),
         lecturer_id=current_user.lecturer_id,
     )
+
+
+@router.get(
+    "/templates",
+    response_model=list[ScheduleTemplateResponse],
+)
+def get_schedule_templates(
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    return schedule_service.list_items(
+        db,
+        current_user.lecturer_id,
+    )
+
+
+@router.get(
+    "/templates/{item_id}",
+    response_model=ScheduleTemplateResponse,
+)
+def get_schedule_template(
+    item_id: str,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    try:
+        return schedule_service.get_item_template(
+            db,
+            item_id,
+            current_user.lecturer_id,
+        )
+    except LookupError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+
+
+@router.post(
+    "/templates",
+    response_model=ScheduleTemplateResponse,
+    status_code=201,
+)
+def create_schedule_template(
+    data: ScheduleTemplateCreate,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    try:
+        return schedule_service.create_item(
+            db,
+            current_user.lecturer_id,
+            weekday=data.weekday,
+            start_time=data.start_time,
+            end_time=data.end_time,
+            room=data.room,
+            item_type=data.item_type,
+            course_id=data.course_id,
+            subject=data.subject,
+            code=data.code,
+            batch=data.batch,
+        )
+    except LookupError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+
+
+@router.patch(
+    "/templates/{item_id}",
+    response_model=ScheduleTemplateResponse,
+)
+def update_schedule_template(
+    item_id: str,
+    data: ScheduleTemplateUpdate,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    fields = data.model_dump(exclude_unset=True)
+
+    try:
+        return schedule_service.update_item(
+            db,
+            item_id,
+            current_user.lecturer_id,
+            **fields,
+        )
+    except LookupError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+
+
+@router.delete(
+    "/templates/{item_id}",
+    status_code=204,
+)
+def delete_schedule_template(
+    item_id: str,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    try:
+        schedule_service.delete_item(
+            db,
+            item_id,
+            current_user.lecturer_id,
+        )
+    except LookupError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
 
 
 @router.post(
