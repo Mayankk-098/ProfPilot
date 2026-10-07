@@ -8,6 +8,7 @@ import {
 } from "react-native";
 
 import {
+  useCallback,
   useEffect,
   useState,
 } from "react";
@@ -44,11 +45,7 @@ export default function AttendanceScreen() {
   const [error, setError] =
     useState("");
 
-  useEffect(() => {
-    loadAttendance();
-  }, [course_id]);
-
-  async function loadAttendance() {
+  const loadAttendance = useCallback(async () => {
     try {
       setLoading(true);
       setError("");
@@ -89,12 +86,16 @@ export default function AttendanceScreen() {
       setError(
         err instanceof Error
           ? err.message
-          : "Couldn't load attendance."
+          : "Couldn&apos;t load attendance."
       );
     } finally {
       setLoading(false);
     }
-  }
+  }, [course_id]);
+
+  useEffect(() => {
+    void loadAttendance();
+  }, [loadAttendance]);
 
   if (loading) {
     return (
