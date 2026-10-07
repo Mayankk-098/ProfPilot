@@ -158,6 +158,15 @@ export default function LoginScreen() {
           <Text style={styles.hint}>
             Sign in using your faculty account.
           </Text>
+
+          <Pressable
+            style={styles.signupButton}
+            onPress={() => router.push("/register")}
+          >
+            <Text style={styles.signupText}>
+              Create faculty account
+            </Text>
+          </Pressable>
         </View>
 
         <Text style={styles.footer}>
@@ -280,6 +289,18 @@ const styles =
       textAlign: "center",
       fontSize: 11,
       marginTop: 14,
+    },
+
+    signupButton: {
+      marginTop: 18,
+      alignItems: "center",
+      paddingVertical: 10,
+    },
+
+    signupText: {
+      color: "#6FC5FF",
+      fontSize: 13,
+      fontWeight: "700",
     },
 
     footer: {
