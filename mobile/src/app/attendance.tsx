@@ -94,7 +94,7 @@ export default function AttendanceScreen() {
   }, [course_id]);
 
   useEffect(() => {
-    void loadAttendance();
+    void Promise.resolve().then(() => loadAttendance());
   }, [loadAttendance]);
 
   if (loading) {
