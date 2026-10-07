@@ -414,6 +414,128 @@ export async function getCourse(
   );
 }
 
+export type SyllabusUnitCreateRequest = {
+  name: string;
+};
+
+export type SyllabusTopicCreateRequest = {
+  name: string;
+  planned_date?: string | null;
+};
+
+export async function createSyllabusUnit(
+  courseId: string,
+  data: SyllabusUnitCreateRequest
+): Promise<SyllabusUnit> {
+  return request<SyllabusUnit>(
+    `/courses/${encodeURIComponent(courseId)}/units`,
+    {
+      method: "POST",
+      body: JSON.stringify(data),
+    }
+  );
+}
+
+export async function updateSyllabusUnit(
+  courseId: string,
+  unitId: string,
+  name: string
+): Promise<SyllabusUnit> {
+  return request<SyllabusUnit>(
+    `/courses/${encodeURIComponent(courseId)}/units/${encodeURIComponent(unitId)}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({ name }),
+    }
+  );
+}
+
+export async function deleteSyllabusUnit(
+  courseId: string,
+  unitId: string
+): Promise<void> {
+  await request<void>(
+    `/courses/${encodeURIComponent(courseId)}/units/${encodeURIComponent(unitId)}`,
+    {
+      method: "DELETE",
+    }
+  );
+}
+
+export async function reorderSyllabusUnits(
+  courseId: string,
+  ids: string[]
+): Promise<SyllabusUnit[]> {
+  return request<SyllabusUnit[]>(
+    `/courses/${encodeURIComponent(courseId)}/units/reorder`,
+    {
+      method: "PUT",
+      body: JSON.stringify({ ids }),
+    }
+  );
+}
+
+export async function createSyllabusTopic(
+  courseId: string,
+  unitId: string,
+  data: SyllabusTopicCreateRequest
+): Promise<SyllabusTopic> {
+  return request<SyllabusTopic>(
+    `/courses/${encodeURIComponent(courseId)}/units/${encodeURIComponent(unitId)}/topics`,
+    {
+      method: "POST",
+      body: JSON.stringify(data),
+    }
+  );
+}
+
+export async function updateSyllabusTopic(
+  courseId: string,
+  unitId: string,
+  topicId: string,
+  data: {
+    name?: string;
+    planned_date?: string | null;
+    clear_planned_date?: boolean;
+  }
+): Promise<SyllabusTopic> {
+  return request<SyllabusTopic>(
+    `/courses/${encodeURIComponent(courseId)}/units/${encodeURIComponent(unitId)}/topics/${encodeURIComponent(topicId)}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }
+  );
+}
+
+export async function deleteSyllabusTopic(
+  courseId: string,
+  unitId: string,
+  topicId: string
+): Promise<void> {
+  await request<void>(
+    `/courses/${encodeURIComponent(courseId)}/units/${encodeURIComponent(unitId)}/topics/${encodeURIComponent(topicId)}`,
+    {
+      method: "DELETE",
+    }
+  );
+}
+
+export async function reorderSyllabusTopics(
+  courseId: string,
+  unitId: string,
+  ids: string[]
+): Promise<SyllabusTopic[]> {
+  return request<SyllabusTopic[]>(
+    `/courses/${encodeURIComponent(courseId)}/units/${encodeURIComponent(unitId)}/topics/reorder`,
+    {
+      method: "PUT",
+      body: JSON.stringify({ ids }),
+    }
+  );
+}
+
+
 // ================================
 // SCHEDULE APIs
 // ================================
