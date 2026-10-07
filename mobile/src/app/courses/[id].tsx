@@ -227,6 +227,18 @@ export default function CourseDetailScreen() {
               })
             }
           />
+
+          <ActionCard
+            icon="♙"
+            title="Students"
+            subtitle={course.total_students + " enrolled"}
+            onPress={() =>
+              router.push({
+                pathname: "/courses/[id]/students" as any,
+                params: { id: course.id },
+              })
+            }
+          />
         </View>
 
         <Text style={styles.sectionTitle}>
