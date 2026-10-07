@@ -7,6 +7,7 @@ from app.database.db import get_db
 from app.models.academic import Course
 from app.schemas.attendance import (
     AttendanceCourseResponse,
+    AttendanceSessionResponse,
     AttendanceSubmit,
     AttendanceSubmitResult,
 )
@@ -40,6 +41,24 @@ def get_course_attendance(
     course = _get_course(db, course_id, current_user.lecturer_id)
     return attendance_service.build_course_attendance(
         db, course, flagged_only=flagged_only
+    )
+
+
+@router.get(
+    "/{course_id}/records/{class_date}",
+    response_model=AttendanceSessionResponse,
+)
+def get_attendance_session(
+    course_id: str,
+    class_date: date,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    course = _get_course(db, course_id, current_user.lecturer_id)
+    return attendance_service.get_attendance_session(
+        db,
+        course,
+        class_date,
     )
 
 
