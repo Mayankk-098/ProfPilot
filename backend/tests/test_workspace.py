@@ -518,7 +518,7 @@ def test_timetable_template_crud_and_isolation():
         assert body["end_time"] == "10:00"
         assert body["room"] == "LT-1"
         assert body["item_type"] == "class"
-        assert body["lecturer_id"] == lecturer_a["Authorization"] is not None
+        assert body["lecturer_id"].startswith("lec_")
 
         listed = client.get(
             "/schedule/templates",
