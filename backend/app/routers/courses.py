@@ -2,19 +2,29 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.database.db import get_db
-from app.models.academic import Course
+from app.models.academic import Course, SyllabusTopic, SyllabusUnit
 from app.schemas.academic import (
     CourseCreate,
     CourseDetailResponse,
     CourseSummary,
     CourseUpdate,
     LectureResponse,
+    ReorderRequest,
+    SyllabusTopicCreate,
     SyllabusTopicResponse,
+    SyllabusTopicUpdate,
+    SyllabusUnitCreate,
     SyllabusUnitResponse,
+    SyllabusUnitUpdate,
 )
-from app.services import course_service
+from app.services import course_service, syllabus_service
 from app.services.academic_state import build_course_state
 from app.services.auth_service import get_current_user
+from app.services.ownership import (
+    require_owned_course,
+    require_owned_topic,
+    require_owned_unit,
+)
 
 
 router = APIRouter(
@@ -63,6 +73,31 @@ def get_actual_progress(
     )
 
 
+def _topic_response(topic: SyllabusTopic) -> SyllabusTopicResponse:
+    return SyllabusTopicResponse(
+        id=topic.id,
+        name=topic.name,
+        completed=topic.completed,
+        planned_date=(
+            topic.planned_date.isoformat()
+            if topic.planned_date
+            else None
+        ),
+    )
+
+
+def _unit_response(unit: SyllabusUnit) -> SyllabusUnitResponse:
+    return SyllabusUnitResponse(
+        id=unit.id,
+        name=unit.name,
+        progress=unit.progress,
+        topics=[
+            _topic_response(topic)
+            for topic in unit.topics
+        ],
+    )
+
+
 def build_course_detail(
     db: Session,
     course: Course,
@@ -71,45 +106,6 @@ def build_course_detail(
         db=db,
         course=course,
     )
-
-    syllabus = []
-    for unit in course.units:
-        topics = [
-            SyllabusTopicResponse(
-                id=topic.id,
-                name=topic.name,
-                completed=topic.completed,
-                planned_date=(
-                    topic.planned_date.isoformat()
-                    if topic.planned_date
-                    else None
-                ),
-            )
-            for topic in unit.topics
-        ]
-
-        syllabus.append(
-            SyllabusUnitResponse(
-                id=unit.id,
-                name=unit.name,
-                progress=unit.progress,
-                topics=topics,
-            )
-        )
-
-    lectures = [
-        LectureResponse(
-            id=lecture.id,
-            date=(
-                lecture.lecture_date.isoformat()
-                if lecture.lecture_date
-                else ""
-            ),
-            duration=lecture.duration,
-            description=lecture.description,
-        )
-        for lecture in course.lectures
-    ]
 
     summary = build_course_summary(
         course=course,
@@ -129,9 +125,66 @@ def build_course_detail(
             if course.planned_end_date
             else None
         ),
-        syllabus=syllabus,
-        lectures=lectures,
+        syllabus=[
+            _unit_response(unit)
+            for unit in course.units
+        ],
+        lectures=[
+            LectureResponse(
+                id=lecture.id,
+                date=(
+                    lecture.lecture_date.isoformat()
+                    if lecture.lecture_date
+                    else ""
+                ),
+                duration=lecture.duration,
+                description=lecture.description,
+            )
+            for lecture in course.lectures
+        ],
     )
+
+
+def _owned_unit_for_course(
+    db: Session,
+    course_id: str,
+    unit_id: str,
+    lecturer_id: str,
+) -> SyllabusUnit:
+    require_owned_course(db, course_id, lecturer_id)
+    unit = require_owned_unit(db, unit_id, lecturer_id)
+    if unit.course_id != course_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Syllabus unit not found",
+        )
+    return unit
+
+
+def _owned_topic_for_course_unit(
+    db: Session,
+    course_id: str,
+    unit_id: str,
+    topic_id: str,
+    lecturer_id: str,
+) -> SyllabusTopic:
+    unit = _owned_unit_for_course(
+        db,
+        course_id,
+        unit_id,
+        lecturer_id,
+    )
+    topic = require_owned_topic(
+        db,
+        topic_id,
+        lecturer_id,
+    )
+    if topic.unit_id != unit.id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Syllabus topic not found",
+        )
+    return topic
 
 
 @router.get(
@@ -197,33 +250,6 @@ def create_course(
     return build_course_detail(db, course)
 
 
-@router.get(
-    "/{course_id}",
-    response_model=CourseDetailResponse,
-)
-def get_course(
-    course_id: str,
-    db: Session = Depends(get_db),
-    current_user=Depends(get_current_user),
-):
-    course = (
-        db.query(Course)
-        .filter(
-            Course.id == course_id,
-            Course.lecturer_id == current_user.lecturer_id,
-        )
-        .first()
-    )
-
-    if course is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Course not found",
-        )
-
-    return build_course_detail(db, course)
-
-
 @router.patch(
     "/{course_id}",
     response_model=CourseDetailResponse,
@@ -274,3 +300,298 @@ def delete_course(
         current_user.lecturer_id,
         course_id,
     )
+
+
+@router.get(
+    "/{course_id}",
+    response_model=CourseDetailResponse,
+)
+def get_course(
+    course_id: str,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    course = (
+        db.query(Course)
+        .filter(
+            Course.id == course_id,
+            Course.lecturer_id == current_user.lecturer_id,
+        )
+        .first()
+    )
+
+    if course is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Course not found",
+        )
+
+    return build_course_detail(db, course)
+
+
+# ============================================================
+# SYLLABUS
+# ============================================================
+
+
+@router.post(
+    "/{course_id}/units",
+    response_model=SyllabusUnitResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_unit(
+    course_id: str,
+    data: SyllabusUnitCreate,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    try:
+        unit = syllabus_service.add_unit(
+            db,
+            current_user.lecturer_id,
+            course_id,
+            data.name,
+        )
+    except HTTPException:
+        raise
+    except ValueError as error:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(error),
+        ) from error
+
+    return _unit_response(unit)
+
+
+@router.patch(
+    "/{course_id}/units/{unit_id}",
+    response_model=SyllabusUnitResponse,
+)
+def update_unit(
+    course_id: str,
+    unit_id: str,
+    data: SyllabusUnitUpdate,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    _owned_unit_for_course(
+        db,
+        course_id,
+        unit_id,
+        current_user.lecturer_id,
+    )
+
+    try:
+        unit = syllabus_service.update_unit(
+            db,
+            current_user.lecturer_id,
+            unit_id,
+            data.name,
+        )
+    except HTTPException:
+        raise
+    except ValueError as error:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(error),
+        ) from error
+
+    return _unit_response(unit)
+
+
+@router.delete(
+    "/{course_id}/units/{unit_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def delete_unit(
+    course_id: str,
+    unit_id: str,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    _owned_unit_for_course(
+        db,
+        course_id,
+        unit_id,
+        current_user.lecturer_id,
+    )
+
+    syllabus_service.delete_unit(
+        db,
+        current_user.lecturer_id,
+        unit_id,
+    )
+
+
+@router.put(
+    "/{course_id}/units/reorder",
+    response_model=list[SyllabusUnitResponse],
+)
+def reorder_units(
+    course_id: str,
+    data: ReorderRequest,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    try:
+        units = syllabus_service.reorder_units(
+            db,
+            current_user.lecturer_id,
+            course_id,
+            data.ids,
+        )
+    except HTTPException:
+        raise
+    except ValueError as error:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(error),
+        ) from error
+
+    return [
+        _unit_response(unit)
+        for unit in units
+    ]
+
+
+@router.post(
+    "/{course_id}/units/{unit_id}/topics",
+    response_model=SyllabusTopicResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_topic(
+    course_id: str,
+    unit_id: str,
+    data: SyllabusTopicCreate,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    unit = _owned_unit_for_course(
+        db,
+        course_id,
+        unit_id,
+        current_user.lecturer_id,
+    )
+
+    try:
+        topic = syllabus_service.add_topic(
+            db,
+            current_user.lecturer_id,
+            unit.id,
+            data.name,
+            data.planned_date,
+        )
+    except HTTPException:
+        raise
+    except ValueError as error:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(error),
+        ) from error
+
+    return _topic_response(topic)
+
+
+@router.patch(
+    "/{course_id}/units/{unit_id}/topics/{topic_id}",
+    response_model=SyllabusTopicResponse,
+)
+def update_topic(
+    course_id: str,
+    unit_id: str,
+    topic_id: str,
+    data: SyllabusTopicUpdate,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    _owned_topic_for_course_unit(
+        db,
+        course_id,
+        unit_id,
+        topic_id,
+        current_user.lecturer_id,
+    )
+
+    try:
+        topic = syllabus_service.update_topic(
+            db,
+            current_user.lecturer_id,
+            topic_id,
+            name=data.name,
+            planned_date=data.planned_date,
+            clear_planned_date=data.clear_planned_date,
+        )
+    except HTTPException:
+        raise
+    except ValueError as error:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(error),
+        ) from error
+
+    return _topic_response(topic)
+
+
+@router.delete(
+    "/{course_id}/units/{unit_id}/topics/{topic_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def delete_topic(
+    course_id: str,
+    unit_id: str,
+    topic_id: str,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    _owned_topic_for_course_unit(
+        db,
+        course_id,
+        unit_id,
+        topic_id,
+        current_user.lecturer_id,
+    )
+
+    syllabus_service.delete_topic(
+        db,
+        current_user.lecturer_id,
+        topic_id,
+    )
+
+
+@router.put(
+    "/{course_id}/units/{unit_id}/topics/reorder",
+    response_model=list[SyllabusTopicResponse],
+)
+def reorder_topics(
+    course_id: str,
+    unit_id: str,
+    data: ReorderRequest,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    unit = _owned_unit_for_course(
+        db,
+        course_id,
+        unit_id,
+        current_user.lecturer_id,
+    )
+
+    try:
+        topics = syllabus_service.reorder_topics(
+            db,
+            current_user.lecturer_id,
+            unit.id,
+            data.ids,
+        )
+    except HTTPException:
+        raise
+    except ValueError as error:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(error),
+        ) from error
+
+    return [
+        _topic_response(topic)
+        for topic in topics
+    ]
