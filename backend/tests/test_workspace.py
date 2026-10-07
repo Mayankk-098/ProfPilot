@@ -84,8 +84,6 @@ def test_register_creates_lecturer_and_empty_workspace():
         schedule = client.get("/schedule/", headers=headers)
         assert schedule.status_code == 200
         assert schedule.json() == []
-
-        assert db.query(db.get_bind().mapper_registry if False else object).count if False else True
     finally:
         app.dependency_overrides.clear()
         db.close()
