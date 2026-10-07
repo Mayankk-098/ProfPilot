@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.database.db import Base, engine
+from app.database.db import Base, engine, ensure_schema
 
 # Register all SQLAlchemy models before create_all()
 from app.models import academic  # noqa: F401
@@ -17,6 +17,7 @@ from app.routers import memory
 
 
 Base.metadata.create_all(bind=engine)
+ensure_schema(engine)
 
 
 app = FastAPI(

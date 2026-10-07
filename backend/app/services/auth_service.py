@@ -10,7 +10,8 @@ from sqlalchemy.orm import Session
 from dotenv import load_dotenv
 
 from app.database.db import get_db
-from app.models.academic import User
+from app.models.academic import Lecturer, User
+from app.services.ids import initials_from_name, new_id
 
 
 load_dotenv()
@@ -39,12 +40,52 @@ def verify_password(password: str, password_hash: str) -> bool:
     )
 
 
+def register_user(
+    db: Session,
+    *,
+    name: str,
+    email: str,
+    password: str,
+    department: str,
+    designation: str,
+) -> User:
+    normalized_email = email.strip().lower()
+    existing_user = db.scalar(select(User).where(User.email == normalized_email))
+    existing_lecturer = db.scalar(
+        select(Lecturer).where(Lecturer.email == normalized_email)
+    )
+    if existing_user is not None or existing_lecturer is not None:
+        raise ValueError("An account with this email already exists")
+
+    lecturer = Lecturer(
+        id=new_id("lec"),
+        name=name.strip(),
+        initials=initials_from_name(name),
+        title=designation.strip(),
+        department=department.strip(),
+        email=normalized_email,
+        experience=0,
+    )
+    db.add(lecturer)
+    db.flush()
+
+    user = User(
+        email=normalized_email,
+        password_hash=hash_password(password),
+        lecturer_id=lecturer.id,
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user
+
+
 def authenticate_user(
     db: Session,
     email: str,
     password: str,
 ) -> User | None:
-    user = db.scalar(select(User).where(User.email == email))
+    user = db.scalar(select(User).where(User.email == email.strip().lower()))
     if user is None or not verify_password(password, user.password_hash):
         return None
     return user

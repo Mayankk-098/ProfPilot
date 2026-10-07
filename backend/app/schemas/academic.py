@@ -1,4 +1,6 @@
-from pydantic import BaseModel
+import datetime as dt
+
+from pydantic import BaseModel, Field
 
 
 class CourseSummary(BaseModel):
@@ -45,8 +47,51 @@ class LectureResponse(BaseModel):
 
 class CourseDetailResponse(CourseSummary):
     department: str
+    start_date: str | None = None
+    planned_end_date: str | None = None
     syllabus: list[SyllabusUnitResponse]
     lectures: list[LectureResponse]
+
+
+class CourseCreate(BaseModel):
+    code: str = Field(min_length=1, max_length=30)
+    name: str = Field(min_length=1, max_length=150)
+    short_name: str = Field(min_length=1, max_length=30)
+    section: str = Field(min_length=1, max_length=30)
+    start_date: dt.date
+    planned_end_date: dt.date
+
+
+class CourseUpdate(BaseModel):
+    code: str | None = Field(default=None, min_length=1, max_length=30)
+    name: str | None = Field(default=None, min_length=1, max_length=150)
+    short_name: str | None = Field(default=None, min_length=1, max_length=30)
+    section: str | None = Field(default=None, min_length=1, max_length=30)
+    start_date: dt.date | None = None
+    planned_end_date: dt.date | None = None
+
+
+class SyllabusUnitCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=150)
+
+
+class SyllabusUnitUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=150)
+
+
+class SyllabusTopicCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=150)
+    planned_date: dt.date | None = None
+
+
+class SyllabusTopicUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=150)
+    planned_date: dt.date | None = None
+    clear_planned_date: bool = False
+
+
+class ReorderRequest(BaseModel):
+    ids: list[str]
 
 
 class AIQuery(BaseModel):

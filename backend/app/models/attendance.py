@@ -10,12 +10,20 @@ ATTENDANCE_STATUSES = ("present", "absent", "excused")
 
 class Student(Base):
     __tablename__ = "students"
+    __table_args__ = (
+        UniqueConstraint("lecturer_id", "roll_no"),
+    )
 
     id: Mapped[str] = mapped_column(String(50), primary_key=True)
 
-    roll_no: Mapped[str] = mapped_column(String(30), unique=True, index=True)
+    roll_no: Mapped[str] = mapped_column(String(30), index=True)
     name: Mapped[str] = mapped_column(String(120))
     section: Mapped[str] = mapped_column(String(30))
+    lecturer_id: Mapped[str] = mapped_column(
+        ForeignKey("lecturers.id"),
+        index=True,
+        nullable=False,
+    )
 
     enrollments = relationship(
         "Enrollment",

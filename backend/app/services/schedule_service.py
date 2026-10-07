@@ -2,8 +2,9 @@ from datetime import date as Date, datetime, time, timedelta
 
 from sqlalchemy.orm import Session
 
-from app.models.academic import ScheduleItem, ScheduleChange
+from app.models.academic import Course, ScheduleItem, ScheduleChange
 from app.services import clock
+from app.services.ids import new_id
 
 
 def _time_str(value: time | None) -> str | None:
@@ -708,4 +709,199 @@ def restore_class(
         )
 
     db.delete(change)
+    db.commit()
+
+
+def _serialize_template(item: ScheduleItem) -> dict:
+    return {
+        "id": item.id,
+        "subject": item.subject,
+        "code": item.code,
+        "batch": item.batch,
+        "weekday": item.weekday,
+        "start_time": _time_str(item.start_time),
+        "end_time": _time_str(item.end_time),
+        "room": item.room,
+        "item_type": item.item_type,
+        "lecturer_id": item.lecturer_id,
+        "course_id": item.course_id,
+    }
+
+
+def list_items(db, lecturer_id: str) -> list[dict]:
+    items = (
+        db.query(ScheduleItem)
+        .filter(ScheduleItem.lecturer_id == lecturer_id)
+        .order_by(
+            ScheduleItem.weekday,
+            ScheduleItem.start_time,
+            ScheduleItem.id,
+        )
+        .all()
+    )
+    return [_serialize_template(item) for item in items]
+
+
+def _template_conflict(
+    db,
+    lecturer_id: str,
+    weekday: int,
+    start_time: time,
+    end_time: time,
+    exclude_id: str | None = None,
+) -> bool:
+    query = db.query(ScheduleItem).filter(
+        ScheduleItem.lecturer_id == lecturer_id,
+        ScheduleItem.weekday == weekday,
+    )
+    if exclude_id is not None:
+        query = query.filter(ScheduleItem.id != exclude_id)
+
+    for other in query.all():
+        if other.start_time < end_time and start_time < other.end_time:
+            return True
+    return False
+
+
+def create_item(
+    db,
+    lecturer_id: str,
+    *,
+    weekday: int,
+    start_time: time,
+    end_time: time,
+    room: str,
+    item_type: str = "class",
+    course_id: str | None = None,
+    subject: str | None = None,
+    code: str | None = None,
+    batch: str | None = None,
+) -> dict:
+    from app.models.academic import Course
+
+    if weekday < 0 or weekday > 6:
+        raise ValueError("weekday must be between 0 (Monday) and 6 (Sunday)")
+    if end_time <= start_time:
+        raise ValueError("End time must be after start time")
+    if item_type not in {"class", "meeting"}:
+        raise ValueError("item_type must be class or meeting")
+
+    course = None
+    if course_id is not None:
+        course = (
+            db.query(Course)
+            .filter(
+                Course.id == course_id,
+                Course.lecturer_id == lecturer_id,
+            )
+            .first()
+        )
+        if course is None:
+            raise LookupError("Course not found")
+
+    resolved_subject = (subject or (course.short_name if course else "") or "").strip()
+    if not resolved_subject:
+        raise ValueError("subject is required when no course is linked")
+
+    resolved_code = code if code is not None else (course.code if course else None)
+    resolved_batch = (batch or (course.section if course else "") or "").strip()
+    if not resolved_batch:
+        raise ValueError("batch is required when no course is linked")
+
+    if _template_conflict(db, lecturer_id, weekday, start_time, end_time):
+        raise ValueError("This slot overlaps another timetable entry")
+
+    from app.services.ids import new_id
+
+    item = ScheduleItem(
+        id=new_id("sch"),
+        subject=resolved_subject,
+        code=resolved_code,
+        batch=resolved_batch,
+        weekday=weekday,
+        start_time=start_time,
+        end_time=end_time,
+        room=room.strip(),
+        item_type=item_type,
+        lecturer_id=lecturer_id,
+        course_id=course.id if course else None,
+    )
+    db.add(item)
+    db.commit()
+    db.refresh(item)
+    return _serialize_template(item)
+
+
+def update_item(
+    db,
+    item_id: str,
+    lecturer_id: str,
+    **fields,
+) -> dict:
+    from app.models.academic import Course
+
+    item = _get_item(db, item_id, lecturer_id=lecturer_id)
+
+    if "course_id" in fields:
+        course_id = fields["course_id"]
+        if course_id is None:
+            item.course_id = None
+        else:
+            course = (
+                db.query(Course)
+                .filter(
+                    Course.id == course_id,
+                    Course.lecturer_id == lecturer_id,
+                )
+                .first()
+            )
+            if course is None:
+                raise LookupError("Course not found")
+            item.course_id = course.id
+            if fields.get("subject") is None:
+                item.subject = course.short_name
+            if fields.get("code") is None:
+                item.code = course.code
+            if fields.get("batch") is None:
+                item.batch = course.section
+
+    for key in ("subject", "code", "batch", "room"):
+        if key in fields and fields[key] is not None:
+            value = fields[key]
+            setattr(item, key, value.strip() if isinstance(value, str) else value)
+
+    if fields.get("weekday") is not None:
+        weekday = fields["weekday"]
+        if weekday < 0 or weekday > 6:
+            raise ValueError("weekday must be between 0 (Monday) and 6 (Sunday)")
+        item.weekday = weekday
+    if fields.get("start_time") is not None:
+        item.start_time = fields["start_time"]
+    if fields.get("end_time") is not None:
+        item.end_time = fields["end_time"]
+    if item.end_time <= item.start_time:
+        raise ValueError("End time must be after start time")
+    if fields.get("item_type") is not None:
+        if fields["item_type"] not in {"class", "meeting"}:
+            raise ValueError("item_type must be class or meeting")
+        item.item_type = fields["item_type"]
+
+    if _template_conflict(
+        db,
+        lecturer_id,
+        item.weekday,
+        item.start_time,
+        item.end_time,
+        exclude_id=item.id,
+    ):
+        raise ValueError("This slot overlaps another timetable entry")
+
+    db.commit()
+    db.refresh(item)
+    return _serialize_template(item)
+
+
+def delete_item(db, item_id: str, lecturer_id: str) -> None:
+    item = _get_item(db, item_id, lecturer_id=lecturer_id)
+    db.delete(item)
     db.commit()

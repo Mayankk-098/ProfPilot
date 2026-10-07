@@ -62,6 +62,7 @@ def make_students(
     prefix: str,
     section: str,
     count: int,
+    lecturer_id: str,
 ) -> list[Student]:
     students = []
 
@@ -77,6 +78,7 @@ def make_students(
                     f"{LAST_NAMES[(i * 11) % len(LAST_NAMES)]}"
                 ),
                 section=section,
+                lecturer_id=lecturer_id,
             )
         )
 
@@ -389,6 +391,7 @@ def populate(
         "24BCS",
         "CSE-B",
         62,
+        "lecturer_001",
     )
 
     ai_students = make_students(
@@ -396,6 +399,7 @@ def populate(
         "24ACS",
         "CSE-A",
         58,
+        "lecturer_001",
     )
 
     os_students = make_students(
@@ -403,6 +407,7 @@ def populate(
         "24OCS",
         "CSE-C",
         10,
+        "lecturer_002",
     )
 
     db.flush()
