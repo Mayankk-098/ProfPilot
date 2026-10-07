@@ -87,6 +87,15 @@ export default function ScheduleScreen() {
           Your academic schedule
         </Text>
 
+        <Pressable
+          style={styles.manageButton}
+          onPress={() => router.push("/schedule/manage" as any)}
+        >
+          <Text style={styles.manageText}>
+            Manage timetable
+          </Text>
+        </Pressable>
+
         {loading && (
           <View style={styles.stateCard}>
             <ActivityIndicator
@@ -251,7 +260,22 @@ const styles =
       color: "#7E8794",
       fontSize: 14,
       marginTop: 5,
-      marginBottom: 25,
+      marginBottom: 12,
+    },
+
+    manageButton: {
+      alignSelf: "flex-start",
+      backgroundColor: "#FFFFFF",
+      borderRadius: 11,
+      paddingHorizontal: 14,
+      paddingVertical: 9,
+      marginBottom: 20,
+    },
+
+    manageText: {
+      color: "#0B0D10",
+      fontSize: 12,
+      fontWeight: "700",
     },
 
     stateCard: {
