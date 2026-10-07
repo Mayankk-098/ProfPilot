@@ -161,7 +161,7 @@ export default function LoginScreen() {
 
           <Pressable
             style={styles.signupButton}
-            onPress={() => router.push("/register")}
+            onPress={() => router.push("/register" as any)}
           >
             <Text style={styles.signupText}>
               Create faculty account
