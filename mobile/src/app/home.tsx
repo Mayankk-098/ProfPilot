@@ -329,7 +329,7 @@ export default function HomeScreen() {
             icon="⚠️"
             title="Risk Radar"
             onPress={() =>
-              router.push("/risk")
+              router.push("/risk" as any)
             }
           />
         </View>
