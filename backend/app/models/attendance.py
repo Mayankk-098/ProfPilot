@@ -19,6 +19,7 @@ class Student(Base):
     roll_no: Mapped[str] = mapped_column(String(30), index=True)
     name: Mapped[str] = mapped_column(String(120))
     section: Mapped[str] = mapped_column(String(30))
+    email: Mapped[str | None] = mapped_column(String(254), nullable=True)
     lecturer_id: Mapped[str] = mapped_column(
         ForeignKey("lecturers.id"),
         index=True,
