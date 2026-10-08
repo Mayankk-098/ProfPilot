@@ -7,9 +7,11 @@ Run from backend:
     python -m seed.seed_demo
 """
 
+import os
 import random
 from datetime import date, datetime, time, timedelta
 
+import bcrypt
 from sqlalchemy import inspect
 
 from app import models  # noqa: F401
@@ -668,6 +670,45 @@ def populate(
     db.commit()
 
 
+
+def seed_if_empty() -> None:
+    """Seed the hosted demo once, only when the database is empty.
+
+    Controlled by DEMO_SEED_ON_STARTUP in the environment so normal
+    development and real workspaces are never seeded accidentally.
+    """
+    demo_email = os.getenv("DEMO_USER_EMAIL", "").strip().lower()
+    demo_password = os.getenv("DEMO_USER_PASSWORD")
+
+    if not demo_email or not demo_password:
+        print("Demo seed skipped: DEMO_USER_EMAIL/DEMO_USER_PASSWORD not configured.")
+        return
+
+    db = SessionLocal()
+    try:
+        if db.query(Lecturer).first() is not None:
+            print("Demo seed skipped: database already contains lecturer data.")
+            return
+
+        populate(db)
+
+        password_hash = bcrypt.hashpw(
+            demo_password.encode("utf-8"),
+            bcrypt.gensalt(),
+        ).decode("utf-8")
+
+        db.add(
+            User(
+                email=demo_email,
+                password_hash=password_hash,
+                lecturer_id="lecturer_001",
+            )
+        )
+        db.commit()
+        print("ProfPilot demo database initialized successfully.")
+    finally:
+        db.close()
+
 def main() -> None:
     """Recreate demo academic data while preserving memory and users."""
 
@@ -713,6 +754,8 @@ def main() -> None:
     try:
         populate(db)
 
+        restored_emails = set()
+
         for email, password_hash, lecturer_id in preserved_users:
             lecturer = (
                 db.query(Lecturer)
@@ -730,6 +773,35 @@ def main() -> None:
                         lecturer_id=lecturer_id,
                     )
                 )
+                restored_emails.add(email.strip().lower())
+
+        # Optional hosted-demo login. Keep credentials out of source control.
+        demo_email = os.getenv("DEMO_USER_EMAIL", "").strip().lower()
+        demo_password = os.getenv("DEMO_USER_PASSWORD")
+
+        if demo_email and demo_password and demo_email not in restored_emails:
+            existing_demo = (
+                db.query(User)
+                .filter(User.email == demo_email)
+                .first()
+            )
+
+            password_hash = bcrypt.hashpw(
+                demo_password.encode("utf-8"),
+                bcrypt.gensalt(),
+            ).decode("utf-8")
+
+            if existing_demo is None:
+                db.add(
+                    User(
+                        email=demo_email,
+                        password_hash=password_hash,
+                        lecturer_id="lecturer_001",
+                    )
+                )
+            else:
+                existing_demo.password_hash = password_hash
+                existing_demo.lecturer_id = "lecturer_001"
 
         db.commit()
 

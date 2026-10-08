@@ -1,3 +1,5 @@
+import os
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -20,6 +22,13 @@ from app.routers import risk
 
 Base.metadata.create_all(bind=engine)
 ensure_schema(engine)
+
+
+# Optional hosted-demo bootstrap. Disabled by default.
+if os.getenv("DEMO_SEED_ON_STARTUP", "").strip().lower() == "true":
+    from seed.seed_demo import seed_if_empty
+
+    seed_if_empty()
 
 
 app = FastAPI(
