@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 from sqlalchemy import create_engine, text
@@ -6,11 +7,23 @@ from sqlalchemy.orm import DeclarativeBase, sessionmaker
 BASE_DIR = Path(__file__).resolve().parents[2]
 DATABASE_PATH = BASE_DIR / "profpilot.db"
 
-DATABASE_URL = f"sqlite:///{DATABASE_PATH.as_posix()}"
+# Local development keeps SQLite; hosted environments provide DATABASE_URL
+# (Railway/Postgres, Supabase/Postgres, etc.).
+DATABASE_URL = os.getenv("DATABASE_URL") or f"sqlite:///{DATABASE_PATH.as_posix()}"
+
+# Railway/Supabase commonly provide a plain postgresql:// URL. SQLAlchemy
+# should use the psycopg v3 driver explicitly.
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = "postgresql+psycopg://" + DATABASE_URL[len("postgres://"):]
+elif DATABASE_URL.startswith("postgresql://"):
+    DATABASE_URL = "postgresql+psycopg://" + DATABASE_URL[len("postgresql://"):]
+
+connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite://") else {}
 
 engine = create_engine(
     DATABASE_URL,
-    connect_args={"check_same_thread": False},
+    connect_args=connect_args,
+    pool_pre_ping=True,
 )
 
 SessionLocal = sessionmaker(
