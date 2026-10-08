@@ -24,6 +24,7 @@ def _response(student) -> StudentResponse:
         roll_no=student.roll_no,
         name=student.name,
         section=student.section,
+        email=student.email,
         lecturer_id=student.lecturer_id,
     )
 
@@ -85,6 +86,7 @@ def add_course_student(
             roll_no=data.roll_no,
             name=data.name,
             section=data.section or "",
+            email=data.email,
         )
     except HTTPException:
         raise
@@ -202,6 +204,7 @@ def confirm_student_import(
                 "roll_no": roll,
                 "name": row.name.strip(),
                 "section": (row.section or "").strip(),
+                "email": (row.email or "").strip() or None,
             }
         )
 
