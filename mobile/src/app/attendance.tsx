@@ -404,7 +404,7 @@ export default function AttendanceScreen() {
           style={styles.historyButton}
           onPress={() =>
             router.push({
-              pathname: "/attendance/history as any",
+              pathname: "/attendance/history" as any,
               params: { course_id: attendance.course_id },
             })
           }
@@ -521,7 +521,7 @@ function StudentCard({
       style={styles.studentCard}
       onPress={() =>
         router.push({
-          pathname: "/attendance/student as any",
+          pathname: "/attendance/student" as any,
           params: {
             course_id: courseId,
             student_id: student.student_id,
