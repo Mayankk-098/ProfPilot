@@ -105,43 +105,8 @@ def _send_gateway(
         method="POST",
     )
 
-    class _GatewayRedirect(urllib.request.HTTPRedirectHandler):
-        def redirect_request(
-            self,
-            req,
-            fp,
-            code,
-            msg,
-            headers,
-            newurl,
-        ):
-            if code == 302 and req.get_method() == "POST":
-                redirected = urllib.request.Request(
-                    newurl,
-                    data=req.data,
-                    headers={
-                        key: value
-                        for key, value in req.header_items()
-                        if key.lower() != "host"
-                    },
-                    method="POST",
-                )
-                return redirected
-            return super().redirect_request(
-                req,
-                fp,
-                code,
-                msg,
-                headers,
-                newurl,
-            )
-
-    opener = urllib.request.build_opener(
-        _GatewayRedirect
-    )
-
     try:
-        with opener.open(
+        with urllib.request.urlopen(
             request,
             timeout=15,
         ) as response:
