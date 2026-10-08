@@ -37,7 +37,10 @@ function todayLocal() {
 
 export default function AttendanceScreen() {
   const router = useRouter();
-  const { course_id } = useLocalSearchParams<{ course_id?: string }>();
+  const { course_id, class_date } = useLocalSearchParams<{
+    course_id?: string;
+    class_date?: string;
+  }>();
 
   const [courseId, setCourseId] = useState<string | null>(
     Array.isArray(course_id) ? course_id[0] : course_id || null
@@ -46,7 +49,9 @@ export default function AttendanceScreen() {
     useState<AttendanceCourseResponse | null>(null);
   const [session, setSession] =
     useState<AttendanceSessionResponse | null>(null);
-  const [classDate, setClassDate] = useState(todayLocal());
+  const [classDate, setClassDate] = useState(
+    Array.isArray(class_date) ? class_date[0] : class_date || todayLocal()
+  );
   const [marks, setMarks] =
     useState<Record<string, AttendanceStatus>>({});
   const [loading, setLoading] = useState(true);
@@ -395,6 +400,18 @@ export default function AttendanceScreen() {
 
         <Text style={styles.sectionTitle}>Attendance health</Text>
 
+        <Pressable
+          style={styles.historyButton}
+          onPress={() =>
+            router.push({
+              pathname: "/attendance/history",
+              params: { course_id: attendance.course_id },
+            })
+          }
+        >
+          <Text style={styles.historyButtonText}>View Attendance History</Text>
+        </Pressable>
+
         <View style={styles.summaryCard}>
           <Text style={styles.summaryLabel}>Class average</Text>
           <Text style={styles.percentage}>
@@ -424,7 +441,11 @@ export default function AttendanceScreen() {
           </View>
         ) : (
           flaggedStudents.map((student) => (
-            <StudentCard key={student.student_id} student={student} />
+            <StudentCard
+              key={student.student_id}
+              student={student}
+              courseId={attendance.course_id}
+            />
           ))
         )}
 
@@ -484,12 +505,30 @@ function AttendanceRow({
   );
 }
 
-function StudentCard({ student }: { student: AttendanceStudent }) {
+function StudentCard({
+  student,
+  courseId,
+}: {
+  student: AttendanceStudent;
+  courseId: string;
+}) {
+  const router = useRouter();
   const percentage =
     student.percentage == null ? null : Math.round(student.percentage);
 
   return (
-    <View style={styles.studentCard}>
+    <Pressable
+      style={styles.studentCard}
+      onPress={() =>
+        router.push({
+          pathname: "/attendance/student",
+          params: {
+            course_id: courseId,
+            student_id: student.student_id,
+          },
+        })
+      }
+    >
       <View style={styles.studentInfo}>
         <Text style={styles.rollNo}>{student.roll_no}</Text>
         <Text style={styles.studentName}>{student.name}</Text>
@@ -511,7 +550,7 @@ function StudentCard({ student }: { student: AttendanceStudent }) {
           {student.attended}/{student.total}
         </Text>
       </View>
-    </View>
+    </Pressable>
   );
 }
 
@@ -589,6 +628,15 @@ const styles = StyleSheet.create({
   backLinkText: { color: "#6FC5FF", fontSize: 12 },
   errorTitle: { color: "#FFFFFF", fontSize: 20, fontWeight: "700" },
   errorText: { color: "#7E8794", textAlign: "center", lineHeight: 18, marginTop: 8 },
+  historyButton: {
+    minHeight: 43,
+    borderRadius: 11,
+    backgroundColor: "#252E37",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 12,
+  },
+  historyButtonText: { color: "#E0E6EB", fontSize: 10, fontWeight: "800" },
   summaryCard: { backgroundColor: "#171A20", borderRadius: 20, padding: 22, marginBottom: 22 },
   summaryLabel: { color: "#8B95A2", fontSize: 12 },
   percentage: { color: "#FFFFFF", fontSize: 42, fontWeight: "700", marginTop: 10 },
