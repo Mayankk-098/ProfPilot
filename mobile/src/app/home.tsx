@@ -324,6 +324,14 @@ export default function HomeScreen() {
               )
             }
           />
+
+          <QuickAction
+            icon="⚠️"
+            title="Risk Radar"
+            onPress={() =>
+              router.push("/risk")
+            }
+          />
         </View>
 
         <View style={{ height: 100 }} />
