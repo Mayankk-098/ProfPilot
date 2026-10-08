@@ -14,13 +14,10 @@ from app.models.academic import Course
 from app.models.attendance import Enrollment, Student
 
 
-RESEND_API_URL = "https://api.resend.com/emails"
-
-
-def _config() -> tuple[str | None, str | None]:
+def _gateway_config() -> tuple[str | None, str | None]:
     return (
-        os.getenv("RESEND_API_KEY"),
-        os.getenv("RESEND_FROM_EMAIL"),
+        os.getenv("EMAIL_GATEWAY_URL"),
+        os.getenv("EMAIL_GATEWAY_SECRET"),
     )
 
 
@@ -57,40 +54,40 @@ def _recipient_emails(
     return emails
 
 
-def _send_resend(
+def _send_gateway(
     *,
     recipients: Iterable[str],
     subject: str,
     text_body: str,
     html_body: str,
 ) -> dict:
-    api_key, from_email = _config()
+    gateway_url, gateway_secret = _gateway_config()
+    recipient_list = list(recipients)
 
-    if not api_key or not from_email:
+    if not gateway_url or not gateway_secret:
         return {
             "status": "not_configured",
             "sent": False,
-            "recipient_count": len(list(recipients)),
+            "recipient_count": len(recipient_list),
+            "provider": "google_apps_script",
             "message": (
                 "Email delivery is not configured. "
-                "Set RESEND_API_KEY and RESEND_FROM_EMAIL."
+                "Set EMAIL_GATEWAY_URL and EMAIL_GATEWAY_SECRET."
             ),
         }
 
-    recipient_list = list(recipients)
     if not recipient_list:
         return {
             "status": "no_recipients",
             "sent": False,
             "recipient_count": 0,
-            "message": (
-                "No enrolled students have an email address."
-            ),
+            "provider": "google_apps_script",
+            "message": "No enrolled students have an email address.",
         }
 
     payload = json.dumps(
         {
-            "from": from_email,
+            "secret": gateway_secret,
             "to": recipient_list,
             "subject": subject,
             "text": text_body,
@@ -98,59 +95,129 @@ def _send_resend(
         }
     ).encode("utf-8")
 
-    endpoint = os.getenv(
-        "RESEND_API_URL",
-        RESEND_API_URL,
-    )
-
     request = urllib.request.Request(
-        endpoint,
+        gateway_url,
         data=payload,
         headers={
-            "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
             "Accept": "application/json",
         },
         method="POST",
     )
 
+    class _GatewayRedirect(urllib.request.HTTPRedirectHandler):
+        def redirect_request(
+            self,
+            req,
+            fp,
+            code,
+            msg,
+            headers,
+            newurl,
+        ):
+            if code == 302 and req.get_method() == "POST":
+                redirected = urllib.request.Request(
+                    newurl,
+                    data=req.data,
+                    headers={
+                        key: value
+                        for key, value in req.header_items()
+                        if key.lower() != "host"
+                    },
+                    method="POST",
+                )
+                return redirected
+            return super().redirect_request(
+                req,
+                fp,
+                code,
+                msg,
+                headers,
+                newurl,
+            )
+
+    opener = urllib.request.build_opener(
+        _GatewayRedirect
+    )
+
     try:
-        with urllib.request.urlopen(
+        with opener.open(
             request,
             timeout=15,
         ) as response:
-            raw = response.read().decode("utf-8")
+            raw = response.read().decode(
+                "utf-8",
+                errors="replace",
+            )
             data = json.loads(raw) if raw else {}
 
-        return {
-            "status": "sent",
-            "sent": True,
-            "recipient_count": len(recipient_list),
-            "provider": "resend",
-            "provider_response": data,
-        }
+        if not isinstance(data, dict):
+            return {
+                "status": "provider_error",
+                "sent": False,
+                "recipient_count": len(recipient_list),
+                "provider": "google_apps_script",
+                "message": "Email gateway returned an invalid response.",
+            }
 
-    except urllib.error.HTTPError as error:
-        detail = error.read().decode("utf-8", errors="replace")
+        if data.get("ok") and data.get("sent"):
+            return {
+                "status": "sent",
+                "sent": True,
+                "recipient_count": int(
+                    data.get(
+                        "recipient_count",
+                        len(recipient_list),
+                    )
+                ),
+                "provider": "google_apps_script",
+                "provider_response": data,
+            }
+
         return {
             "status": "provider_error",
             "sent": False,
             "recipient_count": len(recipient_list),
-            "provider": "resend",
+            "provider": "google_apps_script",
+            "message": str(
+                data.get(
+                    "error",
+                    "Email gateway rejected the request.",
+                )
+            ),
+            "provider_response": data,
+        }
+
+    except urllib.error.HTTPError as error:
+        detail = error.read().decode(
+            "utf-8",
+            errors="replace",
+        )
+        return {
+            "status": "provider_error",
+            "sent": False,
+            "recipient_count": len(recipient_list),
+            "provider": "google_apps_script",
             "message": (
-                f"Resend rejected the email request "
+                f"Email gateway rejected the request "
                 f"({error.code})."
             ),
             "provider_error": detail[:1000],
         }
 
-    except (urllib.error.URLError, TimeoutError) as error:
+    except (
+        urllib.error.URLError,
+        TimeoutError,
+        OSError,
+    ) as error:
         return {
             "status": "delivery_error",
             "sent": False,
             "recipient_count": len(recipient_list),
-            "provider": "resend",
-            "message": f"Email delivery failed: {error}",
+            "provider": "google_apps_script",
+            "message": (
+                f"Email gateway delivery failed: {error}"
+            ),
         }
 
     except (ValueError, json.JSONDecodeError) as error:
@@ -158,8 +225,10 @@ def _send_resend(
             "status": "provider_error",
             "sent": False,
             "recipient_count": len(recipient_list),
-            "provider": "resend",
-            "message": f"Invalid response from email provider: {error}",
+            "provider": "google_apps_script",
+            "message": (
+                f"Invalid response from email gateway: {error}"
+            ),
         }
 
 
@@ -264,7 +333,7 @@ def send_class_notification(
             f"Unsupported class notification type: {notification_type}"
         )
 
-    return _send_resend(
+    return _send_gateway(
         recipients=recipients,
         subject=subject,
         text_body=text_body,
