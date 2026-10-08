@@ -199,6 +199,35 @@ export type AttendanceSessionResponse = {
   records: AttendanceSessionRecord[];
 };
 
+export type AttendanceSessionSummary = {
+  class_date: string;
+  present: number;
+  absent: number;
+  excused: number;
+  total_records: number;
+};
+
+export type AttendanceStudentHistoryRow = {
+  class_date: string;
+  status: AttendanceStatus;
+};
+
+export type AttendanceStudentDetailResponse = {
+  course_id: string;
+  course_code: string;
+  threshold_pct: number;
+  student_id: string;
+  roll_no: string;
+  name: string;
+  section: string;
+  attended: number;
+  total: number;
+  percentage: number | null;
+  flagged: boolean;
+  classes_needed_to_recover: number;
+  history: AttendanceStudentHistoryRow[];
+};
+
 export type AttendanceCourseResponse = {
   course_id: string;
   course_code: string;
@@ -767,6 +796,23 @@ export async function confirmStudentImport(
 // ================================
 // ATTENDANCE API
 // ================================
+
+export async function getAttendanceHistory(
+  courseId: string
+): Promise<AttendanceSessionSummary[]> {
+  return request<AttendanceSessionSummary[]>(
+    `/attendance/${encodeURIComponent(courseId)}/history`
+  );
+}
+
+export async function getStudentAttendanceDetail(
+  courseId: string,
+  studentId: string
+): Promise<AttendanceStudentDetailResponse> {
+  return request<AttendanceStudentDetailResponse>(
+    `/attendance/${encodeURIComponent(courseId)}/students/${encodeURIComponent(studentId)}`
+  );
+}
 
 export async function getCourseAttendance(
   courseId: string
