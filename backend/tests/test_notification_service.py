@@ -191,7 +191,7 @@ def test_gateway_reports_html_error_marker(monkeypatch):
         "test-secret",
     )
 
-    opener = FakeOpener("PROFPILOT_ERROR\\nUnauthorized.")
+    opener = FakeOpener("PROFPILOT_ERROR\nUnauthorized.")
     monkeypatch.setattr(
         "urllib.request.urlopen",
         lambda request, timeout: opener.open(request, timeout),
