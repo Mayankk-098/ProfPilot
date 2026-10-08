@@ -19,7 +19,7 @@ def _normalize_email(value: str | None) -> str | None:
     email = value.strip().lower()
     if not email:
         return None
-    if not re.fullmatch(r"[^\\s@]+@[^\\s@]+\\.[^\\s@]+", email):
+    if not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", email):
         raise ValueError("Invalid student email address")
     return email
 
@@ -92,7 +92,7 @@ def add_student(
             roll_no=roll,
             name=name.strip(),
             section=section.strip() or course.section,
-            email=None,
+            email=normalized_email,
             lecturer_id=lecturer_id,
         )
         db.add(student)
@@ -190,12 +190,16 @@ def parse_csv(content: str | bytes) -> list[dict]:
         section = ""
         if "section" in headers:
             section = (raw.get(headers["section"]) or "").strip()
+        email = ""
+        if "email" in headers:
+            email = (raw.get(headers["email"]) or "").strip()
         rows.append(
             {
                 "line": index,
                 "roll_no": roll,
                 "name": name,
                 "section": section,
+                "email": email,
             }
         )
     return rows
