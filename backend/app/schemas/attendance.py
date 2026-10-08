@@ -15,6 +15,35 @@ class AttendanceStudent(BaseModel):
     classes_needed_to_recover: int    # consecutive classes to attend to reach 75%
 
 
+class AttendanceSessionSummary(BaseModel):
+    class_date: str
+    present: int
+    absent: int
+    excused: int
+    total_records: int
+
+
+class AttendanceStudentHistoryRow(BaseModel):
+    class_date: str
+    status: Literal["present", "absent", "excused"]
+
+
+class AttendanceStudentDetailResponse(BaseModel):
+    course_id: str
+    course_code: str
+    threshold_pct: int
+    student_id: str
+    roll_no: str
+    name: str
+    section: str
+    attended: int
+    total: int
+    percentage: float | None
+    flagged: bool
+    classes_needed_to_recover: int
+    history: list[AttendanceStudentHistoryRow]
+
+
 class AttendanceCourseResponse(BaseModel):
     course_id: str
     course_code: str
