@@ -126,7 +126,6 @@ export default function AttendanceHistoryScreen() {
             <SessionCard
               key={session.class_date}
               session={session}
-              courseId={attendance.course_id}
               onOpen={() =>
                 router.push({
                   pathname: "/attendance",
@@ -151,7 +150,6 @@ function SessionCard({
   onOpen,
 }: {
   session: AttendanceSessionSummary;
-  courseId: string;
   onOpen: () => void;
 }) {
   return (
