@@ -90,7 +90,8 @@ export default function StudentRosterScreen() {
       (student) =>
         student.roll_no.toLowerCase().includes(query) ||
         student.name.toLowerCase().includes(query) ||
-        student.section.toLowerCase().includes(query)
+        student.section.toLowerCase().includes(query) ||
+        (student.email || "").toLowerCase().includes(query)
     );
   }, [search, students]);
 
