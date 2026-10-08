@@ -42,6 +42,7 @@ export default function StudentRosterScreen() {
   const [rollNo, setRollNo] = useState("");
   const [name, setName] = useState("");
   const [section, setSection] = useState("");
+  const [email, setEmail] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
 
   const [importOpen, setImportOpen] = useState(false);
@@ -97,6 +98,7 @@ export default function StudentRosterScreen() {
     setRollNo("");
     setName("");
     setSection("");
+    setEmail("");
     setEditingId(null);
   }
 
@@ -105,6 +107,7 @@ export default function StudentRosterScreen() {
     setRollNo(student.roll_no);
     setName(student.name);
     setSection(student.section);
+    setEmail(student.email || "");
   }
 
   async function saveStudent() {
@@ -113,6 +116,7 @@ export default function StudentRosterScreen() {
     const nextRoll = rollNo.trim();
     const nextName = name.trim();
     const nextSection = section.trim();
+    const nextEmail = email.trim();
 
     if (!nextRoll || !nextName) {
       setError("Roll number and student name are required.");
@@ -128,12 +132,14 @@ export default function StudentRosterScreen() {
           roll_no: nextRoll,
           name: nextName,
           section: nextSection,
+          email: nextEmail || null,
         });
       } else {
         await addCourseStudent(courseId, {
           roll_no: nextRoll,
           name: nextName,
           section: nextSection || null,
+          email: nextEmail || null,
         });
       }
 
@@ -209,6 +215,7 @@ export default function StudentRosterScreen() {
         roll_no: row.roll_no,
         name: row.name,
         section: row.section || "",
+        email: row.email || null,
       }));
 
     if (rows.length === 0) {
@@ -341,6 +348,18 @@ export default function StudentRosterScreen() {
             editable={!working}
           />
 
+          <Text style={styles.label}>Email</Text>
+          <TextInput
+            style={styles.input}
+            value={email}
+            onChangeText={setEmail}
+            placeholder="student@example.com"
+            placeholderTextColor="#68727F"
+            keyboardType="email-address"
+            autoCapitalize="none"
+            editable={!working}
+          />
+
           <Pressable
             style={[styles.primaryButton, working && styles.disabledButton]}
             onPress={() => void saveStudent()}
@@ -401,6 +420,9 @@ export default function StudentRosterScreen() {
                 {student.section ? (
                   <Text style={styles.sectionMeta}>Section {student.section}</Text>
                 ) : null}
+                {student.email ? (
+                  <Text style={styles.sectionMeta}>{student.email}</Text>
+                ) : null}
               </View>
 
               <View style={styles.studentActions}>
@@ -444,14 +466,14 @@ export default function StudentRosterScreen() {
         {importOpen ? (
           <View style={styles.importCard}>
             <Text style={styles.importHint}>
-              Required: roll_no, name. Optional: section.
+              Required: roll_no, name. Optional: section, email.
             </Text>
 
             <TextInput
               style={styles.csvInput}
               value={csvText}
               onChangeText={setCsvText}
-              placeholder={"roll_no,name,section\n24bcs001,Ananya Sharma,A\n24bcs002,Rahul Singh,A"}
+              placeholder={"roll_no,name,section,email\n24bcs001,Ananya Sharma,A,ananya@example.com\n24bcs002,Rahul Singh,A,rahul@example.com"}
               placeholderTextColor="#68727F"
               multiline
               textAlignVertical="top"
