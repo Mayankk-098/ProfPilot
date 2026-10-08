@@ -1,0 +1,9 @@
+{
+    "subject":  "ProfPilot Gateway Test",
+    "to":  [
+               "mayanktanwar2022@gmail.com"
+           ],
+    "html":  "\u003ch2\u003eProfPilot Gateway Test\u003c/h2\u003e\u003cp\u003eThis is a final gateway test.\u003c/p\u003e",
+    "secret":  null,
+    "text":  "This is a final ProfPilot gateway test."
+}
