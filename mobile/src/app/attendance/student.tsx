@@ -204,6 +204,8 @@ const styles = StyleSheet.create({
   container: { padding: 20, paddingTop: 55, paddingBottom: 40 },
   center: { flex: 1, alignItems: "center", justifyContent: "center", padding: 25 },
   stateText: { color: "#7E8794", marginTop: 12 },
+  errorTitle: { color: "#FFFFFF", fontSize: 20, fontWeight: "700" },
+  errorText: { color: "#7E8794", textAlign: "center", lineHeight: 18, marginTop: 8 },
   backButton: { alignSelf: "flex-start", paddingRight: 15 },
   back: { color: "#FFFFFF", fontSize: 38, lineHeight: 38 },
   eyebrow: { color: "#6FC5FF", fontSize: 9, fontWeight: "800", letterSpacing: 1.1 },
