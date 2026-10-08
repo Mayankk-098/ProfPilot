@@ -87,8 +87,8 @@ def test_gateway_sends_successfully(monkeypatch):
     )
 
     monkeypatch.setattr(
-        "urllib.request.build_opener",
-        lambda *handlers: opener,
+        "urllib.request.urlopen",
+        lambda request, timeout: opener.open(request, timeout),
     )
 
     result = _send_gateway(
@@ -133,8 +133,8 @@ def test_gateway_reports_provider_rejection(monkeypatch):
     )
 
     monkeypatch.setattr(
-        "urllib.request.build_opener",
-        lambda *handlers: opener,
+        "urllib.request.urlopen",
+        lambda request, timeout: opener.open(request, timeout),
     )
 
     result = _send_gateway(
