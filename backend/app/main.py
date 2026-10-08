@@ -15,6 +15,7 @@ from app.routers import courses
 from app.routers import ai
 from app.routers import memory
 from app.routers import students
+from app.routers import risk
 
 
 Base.metadata.create_all(bind=engine)
@@ -48,8 +49,9 @@ app.include_router(schedule.router)
 app.include_router(memory.router)
 app.include_router(students.router)
 
-# Friend backend infrastructure
+# Attendance and academic intelligence
 app.include_router(attendance_router.router)
+app.include_router(risk.router)
 
 
 @app.get("/")
