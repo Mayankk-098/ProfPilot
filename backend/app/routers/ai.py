@@ -244,11 +244,34 @@ def execute_ai_action(
             detail=result["message"],
         )
 
+    notification = result.get("notification") or {}
+    notification_status = notification.get("status")
+
+    if notification_status == "sent":
+        notification_text = (
+            f" Student notification email was sent to "
+            f"{notification.get('recipient_count', 0)} recipients."
+        )
+    elif notification_status == "no_recipients":
+        notification_text = (
+            " The schedule change was saved, but no enrolled "
+            "students have email addresses yet."
+        )
+    elif notification_status in {"not_configured", "provider_error", "delivery_error", "notification_error"}:
+        notification_text = (
+            " The schedule change was saved, but the student "
+            "notification email could not be sent: "
+            f"{notification.get('message', 'email delivery is unavailable')}."
+        )
+    else:
+        notification_text = ""
+
     return {
         "type": "action_executed",
         "answer": (
             "The confirmed academic action "
             "has been executed successfully."
+            + notification_text
         ),
         "data": result,
         "confidence": 1.0,
