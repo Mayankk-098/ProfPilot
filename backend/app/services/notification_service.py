@@ -116,6 +116,36 @@ def _send_gateway(
             )
             data = json.loads(raw) if raw else {}
 
+        # Apps Script can return a plain HTML marker from HtmlService
+        # to avoid ContentService's one-time googleusercontent redirect.
+        if "PROFPILOT_OK" in raw:
+            return {
+                "status": "sent",
+                "sent": True,
+                "recipient_count": len(recipient_list),
+                "provider": "google_apps_script",
+            }
+
+        if "PROFPILOT_ERROR" in raw:
+            return {
+                "status": "provider_error",
+                "sent": False,
+                "recipient_count": len(recipient_list),
+                "provider": "google_apps_script",
+                "message": raw[:1000],
+            }
+
+        try:
+            data = json.loads(raw) if raw else {}
+        except json.JSONDecodeError as error:
+            return {
+                "status": "provider_error",
+                "sent": False,
+                "recipient_count": len(recipient_list),
+                "provider": "google_apps_script",
+                "message": f"Invalid response from email gateway: {error}",
+            }
+
         if not isinstance(data, dict):
             return {
                 "status": "provider_error",
