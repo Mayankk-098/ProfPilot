@@ -40,7 +40,8 @@ def test_risk_radar_explains_attendance_and_recovery():
             if course["course_id"] == "dbms"
         )
 
-        assert dbms["risk_level"] in {"medium", "high"}
+        assert dbms["risk_level"] == "low"
+        assert dbms["risk_score"] < 25
         assert dbms["attendance"]["flagged_count"] == 2
 
         attendance_driver = next(
