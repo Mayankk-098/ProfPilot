@@ -15,6 +15,8 @@ from app.models.academic import (
     SyllabusUnit,
 )
 from app.models.memory import AcademicEvent
+from app.services import clock, schedule_service
+from app.services.notification_service import send_class_notification
 
 
 # Keep execution at least as conservative as the syllabus mapper.
@@ -644,6 +646,326 @@ def execute_log_lecture_action(
     }
 
 
+def _parse_time(value):
+    from datetime import time as Time
+
+    if value is None:
+        return None
+    if isinstance(value, Time):
+        return value
+
+    text = str(value).strip().upper()
+    for fmt in ("%H:%M", "%I:%M %p", "%I %p"):
+        try:
+            return datetime.strptime(text, fmt).time()
+        except ValueError:
+            continue
+
+    raise ValueError(f"Invalid class time: {value!r}")
+
+
+def _course_for_action(
+    db: Session,
+    course_id: str | None,
+    lecturer_id: str,
+) -> Course | None:
+    if not course_id:
+        return None
+
+    return (
+        db.query(Course)
+        .filter(
+            Course.id == course_id,
+            Course.lecturer_id == lecturer_id,
+        )
+        .first()
+    )
+
+
+def _notification_for_class_change(
+    db: Session,
+    *,
+    course: Course,
+    lecturer_id: str,
+    notification_type: str,
+    original_date: Date,
+    original_start,
+    new_date=None,
+    new_start=None,
+    new_room=None,
+    reason=None,
+) -> dict:
+    try:
+        return send_class_notification(
+            db,
+            course=course,
+            lecturer_id=lecturer_id,
+            notification_type=notification_type,
+            original_date=original_date.isoformat(),
+            original_time=original_start.strftime("%H:%M"),
+            new_date=new_date.isoformat() if new_date else None,
+            new_time=new_start.strftime("%H:%M") if new_start else None,
+            new_room=new_room,
+            reason=reason,
+        )
+    except Exception as exc:
+        return {
+            "status": "notification_error",
+            "sent": False,
+            "recipient_count": 0,
+            "message": f"Notification failed: {exc}",
+        }
+
+
+def execute_cancel_class_action(
+    action_plan: dict,
+    db: Session,
+    lecturer_id: str,
+) -> dict:
+    proposal = action_plan.get("proposal") or {}
+    course_id = proposal.get("course_id")
+    item_id = proposal.get("item_id")
+    class_date = proposal.get("date")
+
+    course = _course_for_action(db, course_id, lecturer_id)
+    if course is None:
+        return {
+            "status": "error",
+            "message": "Course not found or not owned by this lecturer.",
+        }
+
+    if not item_id or not class_date:
+        return {
+            "status": "error",
+            "message": "Cancellation proposal is incomplete.",
+        }
+
+    original_date = _normalize_date(class_date)
+
+    from app.models.academic import ScheduleItem
+    schedule_item = (
+        db.query(ScheduleItem)
+        .filter(
+            ScheduleItem.id == item_id,
+            ScheduleItem.lecturer_id == lecturer_id,
+            ScheduleItem.course_id == course_id,
+            ScheduleItem.item_type == "class",
+        )
+        .first()
+    )
+
+    if schedule_item is None:
+        return {
+            "status": "error",
+            "message": "The scheduled class could not be verified.",
+        }
+
+    if original_date.weekday() != schedule_item.weekday:
+        return {
+            "status": "error",
+            "message": "The proposed class date no longer matches the recurring schedule.",
+        }
+
+    existing = schedule_service._change_for_date(
+        db,
+        schedule_item.id,
+        original_date,
+    )
+    if existing is not None:
+        return {
+            "status": "already_executed",
+            "message": "A schedule change already exists for this class date.",
+            "change": {
+                "item_id": existing.item_id,
+                "on_date": existing.on_date.isoformat(),
+                "status": existing.status,
+            },
+        }
+
+    try:
+        change = schedule_service.cancel_class(
+            db,
+            schedule_item.id,
+            original_date,
+            proposal.get("reason"),
+            lecturer_id=lecturer_id,
+            today=clock.today(),
+        )
+    except (LookupError, ValueError) as exc:
+        return {"status": "error", "message": str(exc)}
+
+    notification = {"status": "skipped", "sent": False}
+    if proposal.get("notify_students", True):
+        notification = _notification_for_class_change(
+            db,
+            course=course,
+            lecturer_id=lecturer_id,
+            notification_type="cancelled",
+            original_date=original_date,
+            original_start=schedule_item.start_time,
+            reason=proposal.get("reason"),
+        )
+
+    db.add(
+        AcademicEvent(
+            lecturer_id=lecturer_id,
+            course_id=course_id,
+            event_type="class_cancelled",
+            title=f"Class cancelled: {course.short_name}",
+            summary=(
+                f"Cancelled {course.short_name} on "
+                f"{original_date.isoformat()} at "
+                f"{schedule_item.start_time.strftime('%H:%M')}."
+            ),
+        )
+    )
+    db.commit()
+
+    return {
+        "status": "executed",
+        "change": {
+            "item_id": change.item_id,
+            "on_date": change.on_date.isoformat(),
+            "status": change.status,
+            "reason": change.reason,
+        },
+        "notification": notification,
+    }
+
+
+def execute_reschedule_class_action(
+    action_plan: dict,
+    db: Session,
+    lecturer_id: str,
+) -> dict:
+    proposal = action_plan.get("proposal") or {}
+    course_id = proposal.get("course_id")
+    item_id = proposal.get("item_id")
+    class_date = proposal.get("date")
+    new_date_value = proposal.get("new_date")
+    new_time_value = proposal.get("new_time")
+
+    course = _course_for_action(db, course_id, lecturer_id)
+    if course is None:
+        return {
+            "status": "error",
+            "message": "Course not found or not owned by this lecturer.",
+        }
+
+    if not item_id or not class_date or not new_date_value:
+        return {
+            "status": "error",
+            "message": "Rescheduling proposal is incomplete.",
+        }
+
+    original_date = _normalize_date(class_date)
+    new_date = _normalize_date(new_date_value)
+    new_start = _parse_time(new_time_value)
+
+    from app.models.academic import ScheduleItem
+    schedule_item = (
+        db.query(ScheduleItem)
+        .filter(
+            ScheduleItem.id == item_id,
+            ScheduleItem.lecturer_id == lecturer_id,
+            ScheduleItem.course_id == course_id,
+            ScheduleItem.item_type == "class",
+        )
+        .first()
+    )
+
+    if schedule_item is None:
+        return {
+            "status": "error",
+            "message": "The scheduled class could not be verified.",
+        }
+
+    if original_date.weekday() != schedule_item.weekday:
+        return {
+            "status": "error",
+            "message": "The proposed class date no longer matches the recurring schedule.",
+        }
+
+    existing = schedule_service._change_for_date(
+        db,
+        schedule_item.id,
+        original_date,
+    )
+    if existing is not None:
+        return {
+            "status": "already_executed",
+            "message": "A schedule change already exists for this class date.",
+            "change": {
+                "item_id": existing.item_id,
+                "on_date": existing.on_date.isoformat(),
+                "status": existing.status,
+            },
+        }
+
+    try:
+        change = schedule_service.reschedule_class(
+            db,
+            schedule_item.id,
+            original_date,
+            new_date,
+            new_start,
+            reason=proposal.get("reason"),
+            lecturer_id=lecturer_id,
+            today=clock.today(),
+        )
+    except (LookupError, ValueError) as exc:
+        return {"status": "error", "message": str(exc)}
+
+    new_actual_start = change.new_start_time or new_start
+    new_actual_end = change.new_end_time or schedule_item.end_time
+
+    notification = {"status": "skipped", "sent": False}
+    if proposal.get("notify_students", True):
+        notification = _notification_for_class_change(
+            db,
+            course=course,
+            lecturer_id=lecturer_id,
+            notification_type="rescheduled",
+            original_date=original_date,
+            original_start=schedule_item.start_time,
+            new_date=change.new_date,
+            new_start=new_actual_start,
+            new_room=change.new_room,
+            reason=proposal.get("reason"),
+        )
+
+    db.add(
+        AcademicEvent(
+            lecturer_id=lecturer_id,
+            course_id=course_id,
+            event_type="class_rescheduled",
+            title=f"Class rescheduled: {course.short_name}",
+            summary=(
+                f"Moved {course.short_name} from "
+                f"{original_date.isoformat()} to "
+                f"{change.new_date.isoformat()} at "
+                f"{new_actual_start.strftime('%H:%M')}."
+            ),
+        )
+    )
+    db.commit()
+
+    return {
+        "status": "executed",
+        "change": {
+            "item_id": change.item_id,
+            "on_date": change.on_date.isoformat(),
+            "status": change.status,
+            "new_date": change.new_date.isoformat(),
+            "new_start_time": new_actual_start.strftime("%H:%M"),
+            "new_end_time": new_actual_end.strftime("%H:%M"),
+            "new_room": change.new_room,
+            "reason": change.reason,
+        },
+        "notification": notification,
+    }
+
+
 def execute_action(
     action_plan: dict,
     db: Session,
@@ -652,13 +974,29 @@ def execute_action(
     """
     Execute a confirmed action.
 
-    Currently supported:
+    Supported:
         log_lecture
+        cancel_class
+        reschedule_class
     """
 
     action = action_plan.get(
         "action"
     )
+
+    if action == "cancel_class":
+        return execute_cancel_class_action(
+            action_plan=action_plan,
+            db=db,
+            lecturer_id=lecturer_id,
+        )
+
+    if action == "reschedule_class":
+        return execute_reschedule_class_action(
+            action_plan=action_plan,
+            db=db,
+            lecturer_id=lecturer_id,
+        )
 
     if action != "log_lecture":
         return {
