@@ -8,6 +8,7 @@ class StudentResponse(BaseModel):
     roll_no: str
     name: str
     section: str
+    email: str | None = None
     lecturer_id: str
 
 
@@ -15,12 +16,14 @@ class StudentCreate(BaseModel):
     roll_no: str = Field(min_length=1, max_length=30)
     name: str = Field(min_length=1, max_length=120)
     section: str | None = Field(default=None, max_length=30)
+    email: str | None = Field(default=None, max_length=254)
 
 
 class StudentUpdate(BaseModel):
     roll_no: str | None = Field(default=None, min_length=1, max_length=30)
     name: str | None = Field(default=None, min_length=1, max_length=120)
     section: str | None = Field(default=None, max_length=30)
+    email: str | None = Field(default=None, max_length=254)
 
 
 class StudentImportContent(BaseModel):
@@ -31,6 +34,7 @@ class StudentImportRow(BaseModel):
     roll_no: str = Field(min_length=1, max_length=30)
     name: str = Field(min_length=1, max_length=120)
     section: str | None = Field(default=None, max_length=30)
+    email: str | None = Field(default=None, max_length=254)
 
 
 class StudentImportConfirm(BaseModel):
