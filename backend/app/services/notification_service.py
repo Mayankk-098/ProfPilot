@@ -114,7 +114,6 @@ def _send_gateway(
                 "utf-8",
                 errors="replace",
             )
-            data = json.loads(raw) if raw else {}
 
         # Apps Script can return a plain HTML marker from HtmlService
         # to avoid ContentService's one-time googleusercontent redirect.
