@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import io
+import re
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -10,6 +11,17 @@ from app.models.attendance import AttendanceRecord, Enrollment, Student
 from app.services.ids import new_id
 from app.services.ownership import require_owned_course, require_owned_student
 
+
+
+def _normalize_email(value: str | None) -> str | None:
+    if value is None:
+        return None
+    email = value.strip().lower()
+    if not email:
+        return None
+    if not re.fullmatch(r"[^\\s@]+@[^\\s@]+\\.[^\\s@]+", email):
+        raise ValueError("Invalid student email address")
+    return email
 
 
 def list_students(
@@ -65,9 +77,11 @@ def add_student(
     roll_no: str,
     name: str,
     section: str,
+    email: str | None = None,
 ) -> Student:
     course = require_owned_course(db, course_id, lecturer_id)
     roll = roll_no.strip()
+    normalized_email = _normalize_email(email)
     if not roll or not name.strip():
         raise ValueError("roll_no and name are required")
 
@@ -78,6 +92,7 @@ def add_student(
             roll_no=roll,
             name=name.strip(),
             section=section.strip() or course.section,
+            email=None,
             lecturer_id=lecturer_id,
         )
         db.add(student)
@@ -86,6 +101,8 @@ def add_student(
         student.name = name.strip()
         if section.strip():
             student.section = section.strip()
+        if email is not None:
+            student.email = normalized_email
 
     existing = db.get(Enrollment, (student.id, course.id))
     if existing is None:
@@ -104,6 +121,7 @@ def update_student(
     name: str | None = None,
     section: str | None = None,
     roll_no: str | None = None,
+    email: str | None = None,
 ) -> Student:
     student = require_owned_student(db, student_id, lecturer_id)
     if roll_no is not None:
@@ -116,6 +134,8 @@ def update_student(
         student.name = name.strip()
     if section is not None:
         student.section = section.strip()
+    if email is not None:
+        student.email = _normalize_email(email)
     db.commit()
     db.refresh(student)
     return student
@@ -249,6 +269,7 @@ def confirm_import(
             roll_no=row["roll_no"],
             name=row["name"],
             section=row.get("section") or "",
+            email=row.get("email"),
         )
         enrolled += 1
         if before is None:
