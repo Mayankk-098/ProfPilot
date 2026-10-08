@@ -554,7 +554,12 @@ class ProfPilotAI:
                         "resolved_entities": resolved_entities,
                     },
                     "confidence": 0.90,
-                    "requires_confirmation": True,
+                    "requires_confirmation": bool(
+                        action_plan.get(
+                            "requires_confirmation",
+                            False,
+                        )
+                    ),
                 }
 
             return {
