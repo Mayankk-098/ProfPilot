@@ -32,7 +32,7 @@ def build_action_message(
     if action == "cancel_class":
         course_id = proposal["course_id"]
         date = proposal["date"]
-        time = proposal["time"]
+        time = proposal.get("time")
 
         answer = (
             f"I can prepare the cancellation of "
@@ -42,16 +42,19 @@ def build_action_message(
         if time:
             answer += f" at {time}"
 
-        answer += ". Would you like me to proceed?"
+        answer += (
+            ". This will also notify enrolled students "
+            "with email addresses. Would you like me to proceed?"
+        )
 
         return answer
 
     if action == "reschedule_class":
         course_id = proposal["course_id"]
         date = proposal["date"]
-        time = proposal["time"]
-        new_date = proposal["new_date"]
-        new_time = proposal["new_time"]
+        time = proposal.get("time")
+        new_date = proposal.get("new_date")
+        new_time = proposal.get("new_time")
 
         answer = (
             f"I can prepare a reschedule for "
@@ -70,7 +73,10 @@ def build_action_message(
         if new_time:
             answer += f" at {new_time}"
 
-        answer += ". Would you like me to proceed?"
+        answer += (
+            ". This will also notify enrolled students "
+            "with email addresses. Would you like me to proceed?"
+        )
 
         return answer
 
@@ -404,6 +410,11 @@ class ProfPilotAI:
             nlp_analysis=nlp_analysis,
             fallback_course_id=course_id,
         )
+
+        # Bind planning to the authenticated lecturer.
+        # The planner uses this only for scoped schedule lookup;
+        # the final executor performs its own ownership checks.
+        resolved_entities["lecturer_id"] = lecturer_id
 
         effective_course_id = (
             resolved_entities["course_id"]
