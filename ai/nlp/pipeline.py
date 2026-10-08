@@ -542,7 +542,11 @@ def _normalize_entities(
         )
     )
 
-    return final_entities
+    return _apply_reschedule_temporal_roles(
+        text=text,
+        entities=final_entities,
+        intent=intent,
+    )
 
 
 # -------------------------------------------------
