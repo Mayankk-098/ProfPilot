@@ -254,6 +254,71 @@ export type AttendanceCourseResponse = {
 };
 
 // ================================
+// ACADEMIC RISK
+// ================================
+
+export type RiskDriver = {
+  type: string;
+  severity: "high" | "medium" | "low";
+  message: string;
+  evidence: Record<string, any>;
+};
+
+export type RecoveryPlan = {
+  student_id: string;
+  roll_no: string;
+  name: string;
+  current_attendance: number | null;
+  attended: number;
+  total: number;
+  classes_needed_to_recover: number;
+  projected_attendance_after_recovery: number | null;
+  action: string;
+};
+
+export type CourseRisk = {
+  course_id: string;
+  course_code: string;
+  course_name: string;
+  short_name: string;
+  section: string;
+  risk_score: number;
+  risk_level: "high" | "medium" | "low" | "on_track";
+  headline: string;
+  drivers: RiskDriver[];
+  attendance: {
+    classes_held: number;
+    class_average_pct: number | null;
+    flagged_count: number;
+    total_students: number;
+  };
+  academic_progress: {
+    actual: number;
+    planned: number;
+    gap: number;
+  };
+  forecast: {
+    status: string;
+    predicted_completion: string | null;
+    planned_end_date: string | null;
+    confidence: string | null;
+  };
+  recovery_plan: RecoveryPlan[];
+  generated_for: string;
+};
+
+export type RiskRadarResponse = {
+  generated_for: string;
+  summary: {
+    total_courses: number;
+    high_risk_courses: number;
+    medium_risk_courses: number;
+    flagged_students: number;
+  };
+  courses: CourseRisk[];
+};
+
+// ================================
 // AI
 // ================================
 
@@ -326,7 +391,6 @@ async function request<T>(
   }
 
   if (!response.ok) {
-    
     const rawMessage =
       data?.detail ||
       data?.message ||
@@ -873,6 +937,13 @@ export async function correctAttendance(
   );
 }
 
+// ================================
+// RISK API
+// ================================
+
+export async function getRiskRadar(): Promise<RiskRadarResponse> {
+  return request<RiskRadarResponse>("/risk/radar");
+}
 
 // ================================
 // AI APIs
@@ -885,7 +956,6 @@ export async function queryProfPilotAI(
     "/ai/query",
     {
       method: "POST",
-
       body: JSON.stringify(
         requestData
       ),
@@ -900,7 +970,6 @@ export async function executeAIAction(
     "/ai/execute",
     {
       method: "POST",
-
       body: JSON.stringify(
         requestData
       ),
