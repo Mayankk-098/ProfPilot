@@ -163,7 +163,7 @@ def test_gateway_accepts_html_success_marker(monkeypatch):
         "test-secret",
     )
 
-    opener = FakeOpener("PROFPILOT_OK\\n{\\"ok\\":true}")
+    opener = FakeOpener('PROFPILOT_OK\n{"ok":true}')
     monkeypatch.setattr(
         "urllib.request.urlopen",
         lambda request, timeout: opener.open(request, timeout),
