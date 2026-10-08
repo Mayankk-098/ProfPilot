@@ -76,3 +76,23 @@ def test_non_reschedule_temporal_roles_are_unchanged():
 
     assert ("friday", "DATE") in labels
     assert ("11 pm", "TIME") in labels
+
+
+def test_normalize_entities_applies_reschedule_roles_to_final_entities():
+    from ai.nlp.pipeline import _normalize_entities
+
+    text = "reschedule my DBMS class Tuesday to Friday 11 PM"
+    entities = _normalize_entities(
+        text=text,
+        predicted_entities=[],
+        intent="reschedule_class",
+    )
+
+    labels = {
+        (entity["text"].lower(), entity["label"])
+        for entity in entities
+    }
+
+    assert ("tuesday", "DATE") in labels
+    assert ("friday", "NEW_DATE") in labels
+    assert ("11 pm", "NEW_TIME") in labels
