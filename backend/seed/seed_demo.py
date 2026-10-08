@@ -7,9 +7,11 @@ Run from backend:
     python -m seed.seed_demo
 """
 
+import os
 import random
 from datetime import date, datetime, time, timedelta
 
+import bcrypt
 from sqlalchemy import inspect
 
 from app import models  # noqa: F401
@@ -713,6 +715,8 @@ def main() -> None:
     try:
         populate(db)
 
+        restored_emails = set()
+
         for email, password_hash, lecturer_id in preserved_users:
             lecturer = (
                 db.query(Lecturer)
@@ -730,6 +734,35 @@ def main() -> None:
                         lecturer_id=lecturer_id,
                     )
                 )
+                restored_emails.add(email.strip().lower())
+
+        # Optional hosted-demo login. Keep credentials out of source control.
+        demo_email = os.getenv("DEMO_USER_EMAIL", "").strip().lower()
+        demo_password = os.getenv("DEMO_USER_PASSWORD")
+
+        if demo_email and demo_password and demo_email not in restored_emails:
+            existing_demo = (
+                db.query(User)
+                .filter(User.email == demo_email)
+                .first()
+            )
+
+            password_hash = bcrypt.hashpw(
+                demo_password.encode("utf-8"),
+                bcrypt.gensalt(),
+            ).decode("utf-8")
+
+            if existing_demo is None:
+                db.add(
+                    User(
+                        email=demo_email,
+                        password_hash=password_hash,
+                        lecturer_id="lecturer_001",
+                    )
+                )
+            else:
+                existing_demo.password_hash = password_hash
+                existing_demo.lecturer_id = "lecturer_001"
 
         db.commit()
 
