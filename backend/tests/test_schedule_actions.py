@@ -79,8 +79,8 @@ def test_cancel_executes_and_reports_missing_email_provider(monkeypatch):
 
 
 def test_reschedule_executes_without_mail_provider(monkeypatch):
-    monkeypatch.delenv("RESEND_API_KEY", raising=False)
-    monkeypatch.delenv("RESEND_FROM_EMAIL", raising=False)
+    monkeypatch.delenv("EMAIL_GATEWAY_URL", raising=False)
+    monkeypatch.delenv("EMAIL_GATEWAY_SECRET", raising=False)
 
     db = make_db()
     try:
