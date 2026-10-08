@@ -670,6 +670,45 @@ def populate(
     db.commit()
 
 
+
+def seed_if_empty() -> None:
+    """Seed the hosted demo once, only when the database is empty.
+
+    Controlled by DEMO_SEED_ON_STARTUP in the environment so normal
+    development and real workspaces are never seeded accidentally.
+    """
+    demo_email = os.getenv("DEMO_USER_EMAIL", "").strip().lower()
+    demo_password = os.getenv("DEMO_USER_PASSWORD")
+
+    if not demo_email or not demo_password:
+        print("Demo seed skipped: DEMO_USER_EMAIL/DEMO_USER_PASSWORD not configured.")
+        return
+
+    db = SessionLocal()
+    try:
+        if db.query(Lecturer).first() is not None:
+            print("Demo seed skipped: database already contains lecturer data.")
+            return
+
+        populate(db)
+
+        password_hash = bcrypt.hashpw(
+            demo_password.encode("utf-8"),
+            bcrypt.gensalt(),
+        ).decode("utf-8")
+
+        db.add(
+            User(
+                email=demo_email,
+                password_hash=password_hash,
+                lecturer_id="lecturer_001",
+            )
+        )
+        db.commit()
+        print("ProfPilot demo database initialized successfully.")
+    finally:
+        db.close()
+
 def main() -> None:
     """Recreate demo academic data while preserving memory and users."""
 
