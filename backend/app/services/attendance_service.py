@@ -247,6 +247,107 @@ def _validate_roster(
     return enrolled_ids
 
 
+def list_attendance_history(
+    db: Session,
+    course,
+) -> list[dict]:
+    rows = db.execute(
+        select(
+            AttendanceRecord.class_date,
+            AttendanceRecord.status,
+            func.count(),
+        )
+        .where(AttendanceRecord.course_id == course.id)
+        .group_by(
+            AttendanceRecord.class_date,
+            AttendanceRecord.status,
+        )
+        .order_by(AttendanceRecord.class_date.desc())
+    ).all()
+
+    grouped: dict[date, dict[str, int]] = {}
+    for class_date, status, count in rows:
+        grouped.setdefault(
+            class_date,
+            {"present": 0, "absent": 0, "excused": 0},
+        )[status] = count
+
+    return [
+        {
+            "class_date": class_date.isoformat(),
+            "present": counts["present"],
+            "absent": counts["absent"],
+            "excused": counts["excused"],
+            "total_records": sum(counts.values()),
+        }
+        for class_date, counts in grouped.items()
+    ]
+
+
+def get_student_attendance_detail(
+    db: Session,
+    course,
+    student_id: str,
+) -> dict:
+    student = db.scalar(
+        select(Student)
+        .join(Enrollment, Enrollment.student_id == Student.id)
+        .where(
+            Student.id == student_id,
+            Student.lecturer_id == course.lecturer_id,
+            Enrollment.course_id == course.id,
+        )
+    )
+    if student is None:
+        raise ValueError("Student is not enrolled in this course.")
+
+    rows = db.scalars(
+        select(AttendanceRecord)
+        .where(
+            AttendanceRecord.course_id == course.id,
+            AttendanceRecord.student_id == student.id,
+        )
+        .order_by(AttendanceRecord.class_date.desc())
+    ).all()
+
+    attended = sum(
+        1
+        for row in rows
+        if row.status == "present"
+        or (row.status == "excused" and EXCUSED_COUNTS_AS_PRESENT)
+    )
+    total = sum(
+        1
+        for row in rows
+        if row.status in ("present", "absent")
+        or (row.status == "excused" and EXCUSED_COUNTS_AS_PRESENT)
+    )
+    summary = rules.summarize_attendance(attended, total)
+
+    return {
+        "course_id": course.id,
+        "course_code": course.code,
+        "threshold_pct": rules.ATTENDANCE_THRESHOLD_PCT,
+        "student_id": student.id,
+        "roll_no": student.roll_no,
+        "name": student.name,
+        "section": student.section,
+        "attended": summary.attended,
+        "total": summary.total,
+        "percentage": summary.percentage,
+        "flagged": summary.flagged,
+        "classes_needed_to_recover": summary.classes_needed_to_recover,
+        "history": [
+            {
+                "class_date": row.class_date.isoformat(),
+                "status": row.status,
+            }
+            for row in rows
+        ],
+    }
+
+
+
 def get_attendance_session(
     db: Session,
     course,
