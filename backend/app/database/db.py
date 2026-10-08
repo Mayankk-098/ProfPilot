@@ -64,6 +64,11 @@ def ensure_schema(bind=None) -> None:
                 )
             )
 
+        if "email" not in columns:
+            conn.execute(
+                text("ALTER TABLE students ADD COLUMN email VARCHAR(254)")
+            )
+
 
 def get_db():
     db = SessionLocal()
