@@ -738,6 +738,7 @@ export type Student = {
   roll_no: string;
   name: string;
   section: string;
+  email: string | null;
   lecturer_id: string;
 };
 
@@ -745,12 +746,14 @@ export type StudentCreateRequest = {
   roll_no: string;
   name: string;
   section?: string | null;
+  email?: string | null;
 };
 
 export type StudentUpdateRequest = {
   roll_no?: string;
   name?: string;
   section?: string;
+  email?: string | null;
 };
 
 export type StudentImportRowPreview = {
@@ -758,6 +761,7 @@ export type StudentImportRowPreview = {
   roll_no: string;
   name: string;
   section: string;
+  email: string;
   status: string;
   message: string;
 };
