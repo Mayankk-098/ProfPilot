@@ -106,10 +106,9 @@ export default function AIScreen() {
   }, [loadContext]);
 
   const courseName =
-    context?.selected_course
-      ?.short_name ||
+    context?.selected_course?.short_name ||
     context?.selected_course?.name ||
-    "your academic workspace";
+    null;
 
   async function sendMessage(
     override?: string
@@ -274,8 +273,14 @@ export default function AIScreen() {
   }
 
   const suggestions = [
-    `When will I finish my ${courseName} syllabus?`,
-    `What did I teach in my last ${courseName} lecture?`,
+    courseName
+      ? `When will I complete the ${courseName} syllabus?`
+      : "When will I complete my syllabus?",
+
+    courseName
+      ? `What did I cover in my last ${courseName} lecture?`
+      : "What did I cover in my last lecture?",
+
     "Which students are below 75% attendance?",
   ];
 
@@ -310,9 +315,7 @@ export default function AIScreen() {
           </Text>
 
           <Text style={styles.subtitle}>
-            {selectedCourseId
-              ? courseName
-              : "Academic companion"}
+            {courseName || "Academic companion"}
           </Text>
         </View>
 
