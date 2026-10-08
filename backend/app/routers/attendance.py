@@ -8,6 +8,8 @@ from app.models.academic import Course
 from app.schemas.attendance import (
     AttendanceCourseResponse,
     AttendanceSessionResponse,
+    AttendanceSessionSummary,
+    AttendanceStudentDetailResponse,
     AttendanceSubmit,
     AttendanceSubmitResult,
 )
@@ -42,6 +44,40 @@ def get_course_attendance(
     return attendance_service.build_course_attendance(
         db, course, flagged_only=flagged_only
     )
+
+
+@router.get(
+    "/{course_id}/history",
+    response_model=list[AttendanceSessionSummary],
+)
+def get_attendance_history(
+    course_id: str,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    course = _get_course(db, course_id, current_user.lecturer_id)
+    return attendance_service.list_attendance_history(db, course)
+
+
+@router.get(
+    "/{course_id}/students/{student_id}",
+    response_model=AttendanceStudentDetailResponse,
+)
+def get_student_attendance_detail(
+    course_id: str,
+    student_id: str,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    course = _get_course(db, course_id, current_user.lecturer_id)
+    try:
+        return attendance_service.get_student_attendance_detail(
+            db,
+            course,
+            student_id,
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
 
 
 @router.get(
