@@ -191,7 +191,8 @@ const styles = StyleSheet.create({
     backgroundColor: "#2A1B1E", borderWidth: 1, borderColor: "#513036",
     borderRadius: 12, padding: 12, marginBottom: 14,
   },
-  errorText: { color: "#FFB0B0", fontSize: 11, lineHeight: 17 },
+  errorTitle: { color: "#FFFFFF", fontSize: 20, fontWeight: "700" },
+  errorText: { color: "#7E8994", fontSize: 11, lineHeight: 17 },
   summaryCard: {
     backgroundColor: "#171A20", borderRadius: 20, padding: 21, marginBottom: 25,
   },
