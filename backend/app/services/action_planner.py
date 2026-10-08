@@ -88,7 +88,14 @@ def _find_class_for_date(
     on_date,
     start_time_text: str | None = None,
 ):
+    from datetime import datetime
     from app.services import schedule_service
+
+    if isinstance(on_date, str):
+        on_date = datetime.strptime(
+            on_date,
+            "%Y-%m-%d",
+        ).date()
 
     occurrences = schedule_service.day_schedule(
         db,
