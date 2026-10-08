@@ -1,1 +1,4 @@
-export const API_BASE_URL = "http://172.17.30.83:8000";
+const DEFAULT_API_BASE_URL = "https://profpilot.onrender.com";
+
+export const API_BASE_URL =
+  process.env.EXPO_PUBLIC_API_URL || DEFAULT_API_BASE_URL;
