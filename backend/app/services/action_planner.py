@@ -5,6 +5,9 @@ from sqlalchemy.orm import Session
 from ai.syllabus.mapper import map_and_format
 SUPPORTED_EXECUTABLE_ACTIONS = {
     "log_lecture",
+    "cancel_class",
+    "reschedule_class",
+    "notify_batch",
 }
 
 def plan_action(
@@ -53,6 +56,23 @@ def plan_action(
             "proposal": None,
         }
 
+    if action == "cancel_class":
+        return plan_cancel_action(
+            resolved_entities,
+            db=db,
+        )
+
+    if action == "reschedule_class":
+        return plan_reschedule_action(
+            resolved_entities,
+            db=db,
+        )
+
+    if action == "notify_batch":
+        return plan_notify_action(
+            resolved_entities,
+        )
+
     if action == "log_lecture":
         return plan_log_lecture_action(
             resolved_entities,
@@ -61,30 +81,55 @@ def plan_action(
 
     return None
 
+def _find_class_for_date(
+    db: Session,
+    lecturer_id: str,
+    course_id: str,
+    on_date,
+    start_time_text: str | None = None,
+):
+    from app.services import schedule_service
+
+    occurrences = schedule_service.day_schedule(
+        db,
+        on_date,
+        lecturer_id=lecturer_id,
+        include_cancelled=False,
+    )
+
+    matches = [
+        item
+        for item in occurrences
+        if item.get("course_id") == course_id
+        and item.get("item_type") == "class"
+    ]
+
+    if start_time_text and matches:
+        normalized = start_time_text.strip().upper()
+        exact = [
+            item
+            for item in matches
+            if item.get("time", "").upper() == normalized
+            or item.get("start_time", "").upper() == normalized
+        ]
+        if exact:
+            matches = exact
+
+    return matches
+
+
 def plan_cancel_action(
     entities: dict,
+    db: Session | None = None,
 ) -> dict:
-    course_id = entities.get(
-        "course_id"
-    )
-
-    date = entities.get(
-        "resolved_date"
-    )
-
-    time = entities.get(
-        "resolved_time"
-    )
-
-    batch = entities.get(
-        "batch_text"
-    )
+    course_id = entities.get("course_id")
+    date = entities.get("resolved_date")
+    time = entities.get("resolved_time")
+    batch = entities.get("batch_text")
 
     missing = []
-
     if not course_id:
         missing.append("course")
-
     if not date:
         missing.append("date")
 
@@ -97,6 +142,43 @@ def plan_cancel_action(
             "proposal": None,
         }
 
+    if db is None:
+        return {
+            "action": "cancel_class",
+            "status": "needs_clarification",
+            "requires_confirmation": False,
+            "missing": ["schedule context"],
+            "proposal": None,
+        }
+
+    matches = _find_class_for_date(
+        db,
+        entities.get("lecturer_id") or "lecturer_001",
+        course_id,
+        date,
+        time,
+    )
+
+    if not matches:
+        return {
+            "action": "cancel_class",
+            "status": "needs_clarification",
+            "requires_confirmation": False,
+            "missing": ["an active scheduled class on that date"],
+            "proposal": None,
+        }
+
+    if len(matches) > 1 and not time:
+        return {
+            "action": "cancel_class",
+            "status": "needs_clarification",
+            "requires_confirmation": True,
+            "missing": ["class time"],
+            "proposal": None,
+        }
+
+    item = matches[0]
+
     return {
         "action": "cancel_class",
         "status": "proposed",
@@ -104,48 +186,33 @@ def plan_cancel_action(
         "missing": [],
         "proposal": {
             "course_id": course_id,
+            "item_id": item["id"],
             "date": date,
-            "time": time,
-            "batch": batch,
+            "time": item.get("start_time"),
+            "end_time": item.get("end_time"),
+            "batch": item.get("batch") or batch,
+            "notify_students": True,
         },
     }
 
 
 def plan_reschedule_action(
     entities: dict,
+    db: Session | None = None,
 ) -> dict:
-    course_id = entities.get(
-        "course_id"
-    )
-
-    date = entities.get(
-        "resolved_date"
-    )
-
-    new_date = entities.get(
-        "resolved_new_date"
-    )
-
-    time = entities.get(
-        "resolved_time"
-    )
-
-    new_time = entities.get(
-        "resolved_new_time"
-    )
+    course_id = entities.get("course_id")
+    date = entities.get("resolved_date")
+    new_date = entities.get("resolved_new_date")
+    time = entities.get("resolved_time")
+    new_time = entities.get("resolved_new_time")
 
     missing = []
-
     if not course_id:
         missing.append("course")
-
     if not date:
         missing.append("date")
-
     if not new_date and not new_time:
-        missing.append(
-            "new date or new time"
-        )
+        missing.append("new date or new time")
 
     if missing:
         return {
@@ -156,6 +223,45 @@ def plan_reschedule_action(
             "proposal": None,
         }
 
+    if db is None:
+        return {
+            "action": "reschedule_class",
+            "status": "needs_clarification",
+            "requires_confirmation": False,
+            "missing": ["schedule context"],
+            "proposal": None,
+        }
+
+    matches = _find_class_for_date(
+        db,
+        entities.get("lecturer_id") or "lecturer_001",
+        course_id,
+        date,
+        time,
+    )
+
+    if not matches:
+        return {
+            "action": "reschedule_class",
+            "status": "needs_clarification",
+            "requires_confirmation": False,
+            "missing": ["an active scheduled class on that date"],
+            "proposal": None,
+        }
+
+    if len(matches) > 1 and not time:
+        return {
+            "action": "reschedule_class",
+            "status": "needs_clarification",
+            "requires_confirmation": True,
+            "missing": ["class time"],
+            "proposal": None,
+        }
+
+    item = matches[0]
+    destination_date = new_date or date
+    destination_time = new_time or item.get("start_time")
+
     return {
         "action": "reschedule_class",
         "status": "proposed",
@@ -163,10 +269,13 @@ def plan_reschedule_action(
         "missing": [],
         "proposal": {
             "course_id": course_id,
+            "item_id": item["id"],
             "date": date,
-            "time": time,
-            "new_date": new_date,
-            "new_time": new_time,
+            "time": item.get("start_time"),
+            "end_time": item.get("end_time"),
+            "new_date": destination_date,
+            "new_time": destination_time,
+            "notify_students": True,
         },
     }
 
