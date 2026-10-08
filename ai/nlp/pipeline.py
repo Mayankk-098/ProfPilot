@@ -342,9 +342,83 @@ def _deduplicate_entities(
     return result
 
 
+def _apply_reschedule_temporal_roles(
+    text: str,
+    entities: list[dict],
+    intent: str | None,
+) -> list[dict]:
+    """
+    Assign original-vs-target roles to deterministic temporal
+    entities for reschedule requests.
+
+    The deterministic extractor intentionally emits weekday names
+    as DATE and clock times as TIME. For reschedule_class:
+        - first date remains DATE; later dates become NEW_DATE
+        - first time remains TIME; later times become NEW_TIME
+        - a lone time is NEW_TIME when it is clearly introduced as
+          the destination or appears after a target date
+    """
+
+    if intent != "reschedule_class":
+        return entities
+
+    result = [dict(entity) for entity in entities]
+
+    dates = [
+        entity
+        for entity in result
+        if entity.get("label") == "DATE"
+    ]
+
+    if len(dates) >= 2:
+        for entity in dates[1:]:
+            entity["label"] = "NEW_DATE"
+
+    times = [
+        entity
+        for entity in result
+        if entity.get("label") == "TIME"
+    ]
+
+    if len(times) >= 2:
+        for entity in times[1:]:
+            entity["label"] = "NEW_TIME"
+
+    elif len(times) == 1:
+        time_entity = times[0]
+        time_start = int(time_entity["start"])
+
+        # A single time is normally the destination when introduced
+        # by a target cue such as "to 11 PM" or "for 11 PM".
+        prefix = text[max(0, time_start - 16):time_start]
+        target_cue = re.search(
+            r"\b(?:to|for|at|until|around)\s*$",
+            prefix,
+            flags=re.IGNORECASE,
+        )
+
+        # In phrases such as "Tuesday to Friday 11 PM", the only
+        # clock time occurs after the target date, so it is a target
+        # time even without an explicit "at" before it.
+        target_date_positions = [
+            int(entity["end"])
+            for entity in result
+            if entity.get("label") == "NEW_DATE"
+        ]
+
+        if target_cue or (
+            target_date_positions
+            and time_start > max(target_date_positions)
+        ):
+            time_entity["label"] = "NEW_TIME"
+
+    return result
+
+
 def _normalize_entities(
     text: str,
     predicted_entities: list[dict],
+    intent: str | None = None,
 ) -> list[dict]:
     """
     Combine ML NER with deterministic extraction.
@@ -479,6 +553,7 @@ def _normalize_entities(
 def extract_entities(
     text: str,
     entity_model,
+    intent: str | None = None,
 ):
     tokens = tokenize(text)
 
@@ -508,6 +583,7 @@ def extract_entities(
     return _normalize_entities(
         text=text,
         predicted_entities=predicted_entities,
+        intent=intent,
     )
 
 
@@ -548,6 +624,7 @@ def analyze_query(text: str) -> dict:
     entities = extract_entities(
         text,
         entity_model,
+        intent=intent,
     )
 
     return {
