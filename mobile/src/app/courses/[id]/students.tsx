@@ -384,7 +384,17 @@ export default function StudentRosterScreen() {
           </View>
         ) : (
           filteredStudents.map((student) => (
-            <View key={student.id} style={styles.studentCard}>
+            <Pressable
+              key={student.id}
+              style={styles.studentCard}
+              onPress={() =>
+                router.push({
+                  pathname: "/attendance/student",
+                  params: { course_id: courseId, student_id: student.id },
+                })
+              }
+              disabled={working}
+            >
               <View style={styles.studentMain}>
                 <Text style={styles.rollNo}>{student.roll_no}</Text>
                 <Text style={styles.studentName}>{student.name}</Text>
@@ -410,7 +420,7 @@ export default function StudentRosterScreen() {
                   <Text style={styles.deleteText}>⌫</Text>
                 </Pressable>
               </View>
-            </View>
+            </Pressable>
           ))
         )}
 
