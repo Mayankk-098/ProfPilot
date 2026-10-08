@@ -389,7 +389,7 @@ export default function StudentRosterScreen() {
               style={styles.studentCard}
               onPress={() =>
                 router.push({
-                  pathname: "/attendance/student",
+                  pathname: "/attendance/student as any",
                   params: { course_id: courseId, student_id: student.id },
                 })
               }
